@@ -30,31 +30,115 @@
 - `backend/` .NET 10 solution
 - `frontend/` Angular uygulama
 - `database/` SQL Server 2025 kurulum ve izin scriptleri
-- `deploy/` Windows Service / IIS yardımcı dosyaları
+- `deploy/` Windows Service / IIS kurulum dosyaları
 
 ## 1. Gereksinimler
 
-### Development
+### Development / kaynaktan production kurulumu
 
+- Windows Server 2019 veya üzeri
 - .NET SDK 10.x
-- Node.js: Angular 22 için **22.22.3+**, **24.15.0+** veya desteklenen daha yeni hat
+- Node.js 24.x veya desteklenen daha yeni sürüm
 - npm
 - SQL Server 2025 (17.x)
-- Visual Studio 2026 veya VS Code (isteğe bağlı)
+- `sqlcmd` (Microsoft SQL command line tool)
+- Visual Studio 2026 veya VS Code (development için isteğe bağlı)
 
-## 2. SQLAdvisor DB kurulumu
+`deploy/install.ps1` IIS rolünü ve eksikse .NET 10 Hosting Bundle / ASP.NET Core Module V2 bileşenini otomatik kurar.
 
-SSMS ile sırasıyla:
+## 2. Tek komut otomatik kurulum
+
+PowerShell'i **Run as Administrator** ile açın ve repository kökünde çalıştırın:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+
+.\deploy\install.ps1 `
+  -SqlInstance "localhost" `
+  -HostName "SQLADVISOR-SRV" `
+  -HttpPort 8088
+```
+
+Windows Authentication kullanılacaksa:
+
+```powershell
+.\deploy\install.ps1 `
+  -SqlInstance "localhost" `
+  -HostName "sqladvisor.kolunsag.local" `
+  -HttpPort 8088 `
+  -EnableWindowsAuthentication
+```
+
+Script aşağıdaki işlemleri otomatik yapar:
+
+1. Administrator ve build toolchain kontrolü.
+2. IIS Windows Server rolü / gerekli IIS feature kurulumu.
+3. ASP.NET Core Module V2 yoksa .NET 10 Hosting Bundle kurulumu.
+4. API için Release `dotnet publish`.
+5. Worker için Release `dotnet publish`.
+6. Angular production build.
+7. Angular çıktısının API `wwwroot` içine yerleştirilmesi.
+8. Tek IIS Site + Application Pool oluşturulması veya güncellenmesi.
+9. Worker'ın `SQLServerAdvisorWorker` Windows Service olarak kurulması.
+10. `database/` altındaki `template` olmayan SQL migration dosyalarının sırasıyla çalıştırılması.
+11. `SQLAdvisor` veritabanının oluşturulması/güncellenmesi.
+12. IIS AppPool ve Worker sanal servis hesaplarının SQLAdvisor DB izinlerinin verilmesi.
+13. Data Protection key klasörü ve NTFS ACL izinlarının oluşturulması.
+14. IIS + Worker başlatılması.
+15. `/health` endpoint ile kurulum doğrulaması.
+
+Varsayılan kurulum dizini:
+
+```text
+C:\Program Files\SqlServerAdvisor
+```
+
+Data Protection key ring:
+
+```text
+C:\ProgramData\SqlServerAdvisor\Keys
+```
+
+Varsayılan servis kimlikleri:
+
+```text
+IIS APPPOOL\SQLServerAdvisor
+NT SERVICE\SQLServerAdvisorWorker
+```
+
+### Uzak SQLAdvisor veritabanı
+
+Otomatik Windows virtual-account SQL grant modeli, SQLAdvisor veritabanının uygulama sunucusuyla aynı Windows Server üzerinde olduğu senaryo için tasarlanmıştır.
+
+SQLAdvisor DB uzak bir SQL Server üzerindeyse uygulama connection string'i açıkça verilebilir:
+
+```powershell
+.\deploy\install.ps1 `
+  -SqlInstance "SQLDB01" `
+  -HostName "sqladvisor.kolunsag.local" `
+  -AdvisorConnectionString "Server=SQLDB01;Database=SQLAdvisor;User ID=SqlAdvisorApp;Password=***;Encrypt=True;TrustServerCertificate=True" `
+  -SkipIdentityGrants
+```
+
+Bu durumda uzak SQL Server üzerindeki login/user izinları DBA tarafından ayrıca tanımlanmalıdır. Parolayı komut satırında bırakmak yerine production ortamında secret/config yönetimi kullanılması önerilir.
+
+Kurulum seçeneklerini görmek için:
+
+```powershell
+Get-Help .\deploy\install.ps1 -Full
+```
+
+## 3. Manuel SQLAdvisor DB kurulumu
+
+Otomatik installer kullanılmıyorsa SSMS/sqlcmd ile `database/` altındaki `template` olmayan migration dosyalarını dosya adına göre sırayla çalıştırın. İlk kurulum dosyası:
 
 ```text
 database/001_create_SQLAdvisor.sql
 ```
 
-çalıştırın.
+API ve Worker'ın `appsettings.json` / `appsettings.Production.json` dosyasındaki `ConnectionStrings:AdvisorDatabase` değerini kendi SQL Server 2025 instance'ınıza göre güncelleyin.
 
-API ve Worker'ın `appsettings.json` dosyasındaki `ConnectionStrings:AdvisorDatabase` değerini kendi SQL Server 2025 instance'ınıza göre güncelleyin.
-
-## 3. Data Protection anahtarları
+## 4. Data Protection anahtarları
 
 API ve Worker **aynı** key ring klasörünü kullanmalıdır:
 
@@ -62,11 +146,13 @@ API ve Worker **aynı** key ring klasörünü kullanmalıdır:
 C:\ProgramData\SqlServerAdvisor\Keys
 ```
 
-Bu klasöre yalnızca API App Pool hesabı ve Worker Service hesabı erişebilmelidir. SQL Login parolaları SQLAdvisor DB'de düz metin tutulmaz.
+Bu klasöre yalnızca API App Pool hesabı ve Worker Service hesabı erişebilmelidir. Otomatik installer ACL izinlerini tanımlar. SQL Login parolaları SQLAdvisor DB'de düz metin tutulmaz.
 
-## 4. Monitored SQL Server hesabı
+## 5. Monitored SQL Server hesabı
 
 `database/002_monitored_server_readonly_login_template.sql` örneğini inceleyin. Production üzerinde kesinlikle `sysadmin` kullanmayın.
+
+Bu template **otomatik kurulumda çalıştırılmaz**. İzlenen production SQL Server'a verilecek salt-okunur yetkiler bilinçli olarak DBA kontrolünde bırakılmıştır.
 
 Worker bağlantılarında:
 
@@ -74,9 +160,9 @@ Worker bağlantılarında:
 Application Name=SQLServerAdvisor.Worker
 ```
 
-kullanılır. Böylece ileride Advisor'ın kendi sorguları workload analizinden dışlanabilir.
+kullanılır.
 
-## 5. Backend geliştirme
+## 6. Backend geliştirme
 
 ```powershell
 cd backend
@@ -93,7 +179,7 @@ API development endpoint'i:
 https://localhost:7140
 ```
 
-## 6. Angular geliştirme
+## 7. Angular geliştirme
 
 ```powershell
 cd frontend
@@ -107,35 +193,19 @@ Angular:
 http://localhost:4200
 ```
 
-`proxy.conf.json` `/api` ve `/hubs` isteklerini `https://localhost:7140` adresine yönlendirir.
+`proxy.conf.json` `/api` ve `/hubs` isteklerini development API adresine yönlendirir.
 
-## 7. Production Worker
+## Production mimarisi
 
-Örnek publish:
+Production kurulumunda Angular ayrı bir IIS sitesi değildir. Angular browser bundle API publish dizinindeki `wwwroot` altında bulunur. ASP.NET Core aynı IIS uygulamasından:
 
-```powershell
-dotnet publish backend/src/SqlServerAdvisor.Worker/SqlServerAdvisor.Worker.csproj -c Release -r win-x64 --self-contained false -o C:\SqlServerAdvisor\Worker
-```
+- Angular statik dosyalarını,
+- `/api/...` controller endpoint'lerini,
+- `/hubs/...` SignalR endpoint'ini,
+- `/health` endpoint'ini
 
-Ardından:
-
-```powershell
-.\deploy\install-worker.ps1 -PublishPath C:\SqlServerAdvisor\Worker
-```
-
-Windows Service otomatik başlar ve sistem reboot sonrası tekrar ayağa kalkar.
+servis eder. Böylece ARR/reverse proxy veya ikinci bir IIS site gereksinimi yoktur.
 
 ## Güvenlik sınırı
 
 Bu proje tasarım gereği monitored server üzerinde otomatik düzeltme çalıştırmaz. Recommendation Engine ileride `CREATE INDEX`, `UPDATE STATISTICS` vb. **script önerebilir**, fakat API/Worker üzerinde bu scriptleri çalıştıran bir endpoint bulunmayacaktır.
-
-## Sonraki milestone
-
-- Capability Matrix (izin/sürüm/Query Store özellik tespiti)
-- Blocking chain collector
-- Wait stats delta collector
-- Query Store / plan-cache workload collector
-- Query Impact Score
-- Execution plan XML parser
-- Finding Evidence
-- Recommendation Engine

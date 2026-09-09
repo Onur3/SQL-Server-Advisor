@@ -73,6 +73,7 @@ public sealed class QueriesController(AdvisorDbContext db) : ControllerBase
                 var displayDatabaseName = IsUnresolvedDatabaseName(query.DatabaseName)
                     ? "Ad-hoc / DB bağlamı yok"
                     : query.DatabaseName;
+                var usablePlan = plan is not null && !string.IsNullOrWhiteSpace(plan.PlanXml);
 
                 return new QueryPerformanceDto(
                     query.Id,
@@ -98,37 +99,61 @@ public sealed class QueriesController(AdvisorDbContext db) : ControllerBase
                     interpretation.SuggestedInspection,
                     runtime.LastExecutionTime,
                     runtime.CapturedAt,
-                    runtime.PlanId,
-                    plan?.PlanHash);
+                    usablePlan ? plan!.Id : null,
+                    usablePlan ? plan!.PlanHash : null);
             })
             .ToList();
 
         return Ok(result);
     }
 
+    // Exact plan endpoint used by the query card. The runtime snapshot already points to a
+    // specific plan id, so do not silently return another/newer plan for the same query.
+    [HttpGet("plans/{planId:long}")]
+    public async Task<ActionResult<QueryPlanDto>> GetPlan(
+        long planId,
+        CancellationToken cancellationToken = default)
+    {
+        var plan = await db.QueryPlans.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == planId, cancellationToken);
+
+        if (plan is null || string.IsNullOrWhiteSpace(plan.PlanXml))
+            return NotFound(new ProblemDetails
+            {
+                Title = "Execution plan bulunamadı",
+                Detail = "Plan cache kaydı mevcut değil veya plan XML artık erişilebilir değil. Query Performance collector yeni plan yakaladığında tekrar deneyin.",
+                Status = StatusCodes.Status404NotFound
+            });
+
+        return Ok(ToDto(plan));
+    }
+
+    // Kept for compatibility with older clients.
     [HttpGet("{queryId:long}/plan")]
     public async Task<ActionResult<QueryPlanDto>> GetLatestPlan(
         long queryId,
         CancellationToken cancellationToken = default)
     {
         var plan = await db.QueryPlans.AsNoTracking()
-            .Where(x => x.QueryId == queryId)
+            .Where(x => x.QueryId == queryId && x.PlanXml != string.Empty)
             .OrderByDescending(x => x.LastSeenAt)
             .FirstOrDefaultAsync(cancellationToken);
 
         if (plan is null)
             return NotFound();
 
-        return Ok(new QueryPlanDto(
-            plan.QueryId,
-            plan.Id,
-            plan.PlanHash,
-            plan.Source,
-            plan.HasActualRuntimeCounters,
-            plan.PlanXml,
-            plan.FirstSeenAt,
-            plan.LastSeenAt));
+        return Ok(ToDto(plan));
     }
+
+    private static QueryPlanDto ToDto(SqlServerAdvisor.Domain.Entities.QueryPlan plan) => new(
+        plan.QueryId,
+        plan.Id,
+        plan.PlanHash,
+        plan.Source,
+        plan.HasActualRuntimeCounters,
+        plan.PlanXml,
+        plan.FirstSeenAt,
+        plan.LastSeenAt);
 
     private static bool IsUnresolvedDatabaseName(string? databaseName) =>
         string.IsNullOrWhiteSpace(databaseName) ||

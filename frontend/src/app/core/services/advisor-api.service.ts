@@ -7,6 +7,7 @@ import { BlockingTelemetry, WaitTelemetry } from '../models/telemetry.models';
 import { QueryPerformance, QueryPlan } from '../models/query.models';
 import { FragmentedIndex, MissingIndexCandidate } from '../models/index.models';
 import { StatisticsStatus } from '../models/statistics.models';
+import { CollectorCoverage } from '../models/collector.models';
 
 @Injectable({ providedIn: 'root' })
 export class AdvisorApiService {
@@ -75,5 +76,11 @@ export class AdvisorApiService {
 
   getStatisticsStatus(take = 100): Observable<StatisticsStatus[]> {
     return this.http.get<StatisticsStatus[]>(`${this.baseUrl}/statistics`, { params: { take } });
+  }
+
+  getCollectorCoverage(collectorType: string): Observable<CollectorCoverage[]> {
+    return this.http.get<CollectorCoverage[]>(`${this.baseUrl}/diagnostics/collector-coverage`, {
+      params: { collectorType }
+    });
   }
 }

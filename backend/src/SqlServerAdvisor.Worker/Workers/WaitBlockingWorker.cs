@@ -47,48 +47,48 @@ public sealed class WaitBlockingWorker(IServiceScopeFactory scopes, ILogger<Wait
         {
             await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
             {
-            db.ChangeTracker.Clear();
-            run = await db.CollectorRuns.SingleAsync(x => x.Id == run.Id, ct);
-            if (run.Status == "Success") return; // Commit acknowledgement may have been lost.
-            var collector = scope.ServiceProvider.GetRequiredService<WaitBlockingCollector>();
-            List<Finding> findings;
-            var evaluate = true;
-            // Collection writes and findings are atomic in the advisor database only.
-            await using var transaction = await db.Database.BeginTransactionAsync(ct);
-            if (type == "WaitStats")
-            {
-                var rows = await collector.WaitsAsync(server, timeout, ct);
-                if (rows.Count == 0) throw new InvalidOperationException("Wait DMV returned no rows; baseline unavailable.");
-                var captured = await db.WaitSnapshots.Where(x => x.ServerProfileId == id).MaxAsync(x => (DateTimeOffset?)x.CapturedAt, ct);
-                var previous = await db.WaitSnapshots.AsNoTracking().Where(x => x.ServerProfileId == id && x.CapturedAt == captured).ToListAsync(ct);
-                evaluate = WaitBlockingAnalysis.ApplyDeltas(rows, previous);
-                findings = WaitBlockingAnalysis.Waits(rows);
-                db.WaitSnapshots.AddRange(rows);
-                run.RowsCollected = rows.Count;
-            }
-            else
-            {
-                var rows = await collector.BlockingAsync(server, timeout, ct);
-                db.BlockingEvents.AddRange(rows);
-                findings = WaitBlockingAnalysis.Blocking(id, rows, run.StartedAt);
-                run.RowsCollected = rows.Count;
-            }
-            var tracked = new List<Finding>();
-            foreach (var finding in findings)
-                tracked.Add(await ServerSnapshotWorker.UpsertFindingAsync(db, finding, ct));
-            if (evaluate)
-                await ServerSnapshotWorker.ResolveInactiveFindingsAsync(db, id,
-                    [type == "WaitStats" ? "WAIT-001" : "BLK-002"], findings.Select(x => x.Fingerprint).ToHashSet(StringComparer.OrdinalIgnoreCase), run.StartedAt, ct);
-            await db.SaveChangesAsync(ct);
-            var factory = scope.ServiceProvider.GetRequiredService<IRecommendationFactory>();
-            foreach (var finding in tracked)
-                if (!await db.Recommendations.AnyAsync(x => x.FindingId == finding.Id, ct) && factory.Create(finding) is { } recommendation)
-                { recommendation.CanExecute = false; db.Recommendations.Add(recommendation); }
-            run.Status = "Success";
-            run.CompletedAt = DateTimeOffset.UtcNow;
-            run.DurationMs = (long)(run.CompletedAt.Value - run.StartedAt).TotalMilliseconds;
-            await db.SaveChangesAsync(ct);
-            await transaction.CommitAsync(ct);
+                db.ChangeTracker.Clear();
+                run = await db.CollectorRuns.SingleAsync(x => x.Id == run.Id, ct);
+                if (run.Status == "Success") return; // Commit acknowledgement may have been lost.
+                var collector = scope.ServiceProvider.GetRequiredService<WaitBlockingCollector>();
+                List<Finding> findings;
+                var evaluate = true;
+                // Collection writes and findings are atomic in the advisor database only.
+                await using var transaction = await db.Database.BeginTransactionAsync(ct);
+                if (type == "WaitStats")
+                {
+                    var rows = await collector.WaitsAsync(server, timeout, ct);
+                    if (rows.Count == 0) throw new InvalidOperationException("Wait DMV returned no rows; baseline unavailable.");
+                    var captured = await db.WaitSnapshots.Where(x => x.ServerProfileId == id).MaxAsync(x => (DateTimeOffset?)x.CapturedAt, ct);
+                    var previous = await db.WaitSnapshots.AsNoTracking().Where(x => x.ServerProfileId == id && x.CapturedAt == captured).ToListAsync(ct);
+                    evaluate = WaitBlockingAnalysis.ApplyDeltas(rows, previous, Math.Max(300000L, interval * 3000L));
+                    findings = WaitBlockingAnalysis.Waits(rows);
+                    db.WaitSnapshots.AddRange(rows);
+                    run.RowsCollected = rows.Count;
+                }
+                else
+                {
+                    var rows = await collector.BlockingAsync(server, timeout, ct);
+                    db.BlockingEvents.AddRange(rows);
+                    findings = WaitBlockingAnalysis.Blocking(id, rows, run.StartedAt);
+                    run.RowsCollected = rows.Count;
+                }
+                var tracked = new List<Finding>();
+                foreach (var finding in findings)
+                    tracked.Add(await ServerSnapshotWorker.UpsertFindingAsync(db, finding, ct));
+                if (evaluate)
+                    await ServerSnapshotWorker.ResolveInactiveFindingsAsync(db, id,
+                        [type == "WaitStats" ? "WAIT-001" : "BLK-002"], findings.Select(x => x.Fingerprint).ToHashSet(StringComparer.OrdinalIgnoreCase), run.StartedAt, ct);
+                await db.SaveChangesAsync(ct);
+                var factory = scope.ServiceProvider.GetRequiredService<IRecommendationFactory>();
+                foreach (var finding in tracked)
+                    if (!await db.Recommendations.AnyAsync(x => x.FindingId == finding.Id, ct) && factory.Create(finding) is { } recommendation)
+                    { recommendation.CanExecute = false; db.Recommendations.Add(recommendation); }
+                run.Status = "Success";
+                run.CompletedAt = DateTimeOffset.UtcNow;
+                run.DurationMs = (long)(run.CompletedAt.Value - run.StartedAt).TotalMilliseconds;
+                await db.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
             });
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }

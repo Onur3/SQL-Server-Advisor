@@ -2,6 +2,21 @@ USE [SQLAdvisor];
 GO
 SET XACT_ABORT ON;
 BEGIN TRANSACTION;
+IF OBJECT_ID(N'ADM.CollectorSetting', N'U') IS NULL
+BEGIN
+    CREATE TABLE ADM.CollectorSetting
+    (
+        Id bigint IDENTITY(1,1) NOT NULL CONSTRAINT PK_ADM_CollectorSetting PRIMARY KEY,
+        ServerProfileId uniqueidentifier NOT NULL,
+        CollectorType nvarchar(100) NOT NULL,
+        IsEnabled bit NOT NULL CONSTRAINT DF_CollectorSetting_Enabled DEFAULT 1,
+        IntervalSeconds int NOT NULL,
+        TimeoutSeconds int NOT NULL,
+        UpdatedAt datetimeoffset NOT NULL CONSTRAINT DF_CollectorSetting_Updated DEFAULT SYSDATETIMEOFFSET(),
+        CONSTRAINT FK_CollectorSetting_Server FOREIGN KEY(ServerProfileId) REFERENCES ADM.Server(Id),
+        CONSTRAINT UQ_CollectorSetting_ServerType UNIQUE(ServerProfileId, CollectorType)
+    );
+END;
 UPDATE SNP.Wait SET DeltaWaitTimeMs=0 WHERE DeltaWaitTimeMs IS NULL;
 UPDATE SNP.Wait SET DeltaSignalWaitMs=0 WHERE DeltaSignalWaitMs IS NULL;
 ALTER TABLE SNP.Wait ALTER COLUMN DeltaWaitTimeMs bigint NOT NULL;

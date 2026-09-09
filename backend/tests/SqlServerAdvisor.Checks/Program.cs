@@ -67,9 +67,11 @@ if (!string.IsNullOrEmpty(integration))
     var server = new ServerProfile { Id = Guid.NewGuid(), Name = "integration-" + Guid.NewGuid(), Host = "localhost" };
     actual.Servers.Add(server);
     await actual.SaveChangesAsync();
+    actual.CollectorSettings.Add(new CollectorSetting { ServerProfileId = server.Id, CollectorType = "WaitStats", IntervalSeconds = 60, TimeoutSeconds = 5 });
     actual.WaitSnapshots.Add(new WaitSnapshot { ServerProfileId = server.Id, WaitType = "WRITELOG", CapturedAt = now, IsBaseline = true });
     actual.BlockingEvents.Add(new BlockingEvent { ServerProfileId = server.Id, SessionId = 51, BlockingSessionId = -2, CapturedAt = now, BlockerStatus = "sleeping" });
     await actual.SaveChangesAsync(); actual.ChangeTracker.Clear();
+    Check((await actual.CollectorSettings.SingleAsync(x => x.ServerProfileId == server.Id)).IntervalSeconds == 60, "SQL collector schedule roundtrip");
     Check(await actual.WaitSnapshots.AnyAsync(x => x.ServerProfileId == server.Id && x.IsBaseline), "SQL migration + EF wait roundtrip");
     Check((await actual.BlockingEvents.SingleAsync(x => x.ServerProfileId == server.Id)).BlockingSessionId == -2, "SQL migration + EF blocking roundtrip");
     Check(true, "all migrations applied twice on SQL Server");

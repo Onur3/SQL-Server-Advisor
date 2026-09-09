@@ -9,12 +9,12 @@ public static class WaitBlockingAnalysis
         || type.StartsWith("PAGEIOLATCH_", StringComparison.Ordinal)
         || type is "WRITELOG" or "RESOURCE_SEMAPHORE" or "THREADPOOL" or "SOS_SCHEDULER_YIELD";
 
-    public static bool ApplyDeltas(List<WaitSnapshot> current, List<WaitSnapshot> previous)
+    public static bool ApplyDeltas(List<WaitSnapshot> current, List<WaitSnapshot> previous, long maxGapMs = 300000)
     {
         var prior = previous.ToDictionary(x => x.WaitType);
         var interval = previous.Count == 0 || current.Count == 0 ? 0L
             : (long)(current[0].CapturedAt - previous[0].CapturedAt).TotalMilliseconds;
-        var reset = interval <= 0 || interval > 300000 || previous.Count == 0 || current.Count == 0
+        var reset = interval <= 0 || interval > maxGapMs || previous.Count == 0 || current.Count == 0
             || current[0].SqlServerStartTime != previous[0].SqlServerStartTime
             || previous.Any(x => !current.Any(c => c.WaitType == x.WaitType))
             || current.Any(x => prior.TryGetValue(x.WaitType, out var p)

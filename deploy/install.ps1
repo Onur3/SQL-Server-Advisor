@@ -270,7 +270,7 @@ Assert-Admin
 $SettingsPath = [IO.Path]::GetFullPath($SettingsPath)
 if (-not (Test-Path $SettingsPath)) { throw "Settings not found: $SettingsPath" }
 $SettingsDirectory = Split-Path -Parent $SettingsPath
-$s = Get-Content -Raw $SettingsPath | ConvertFrom-Json
+$s = Get-Content -Raw -Encoding UTF8 $SettingsPath | ConvertFrom-Json
 
 $InstallRoot = [IO.Path]::GetFullPath([string]$s.installation.installRoot)
 $SiteName = [string]$s.installation.siteName

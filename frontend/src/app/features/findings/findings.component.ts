@@ -84,11 +84,31 @@ type FindingFilter = 'Open' | 'All' | 'Resolved';
 
               <div class="context-row">
                 <div><span>Sunucu</span><strong>{{ finding.serverName }}</strong></div>
-                <div><span>Veritabanı</span><strong>{{ finding.databaseName || 'Sunucu geneli' }}</strong></div>
-                <div><span>Nesne</span><strong>{{ finding.objectName || 'Genel' }}</strong></div>
+                <div><span>Veritabanı</span><strong>{{ finding.databaseName || 'DB bağlamı çözülemedi' }}</strong></div>
+                <div><span>Nesne / tablo</span><strong [title]="finding.objectName || ''">{{ finding.objectName || (finding.queryId ? 'Plan içinden nesne çözümlenemedi' : 'Sunucu geneli') }}</strong></div>
                 <div><span>Tekrar</span><strong>{{ finding.occurrenceCount }}</strong></div>
                 <div><span>Durum</span><strong>{{ statusText(finding.status) }}</strong></div>
               </div>
+
+              @if (finding.queryId) {
+                <section class="query-context">
+                  <div class="query-head">
+                    <div class="query-title"><mat-icon>code</mat-icon><strong>Problemli sorgu</strong></div>
+                    <div class="query-flags">
+                      @if (finding.queryHash) { <span>Hash {{ finding.queryHash }}</span> }
+                      <span [class.ok]="finding.hasExecutionPlan">{{ finding.hasExecutionPlan ? 'Execution plan mevcut' : 'Plan cache XML yok' }}</span>
+                    </div>
+                  </div>
+                  @if (finding.objectName) {
+                    <div class="objects"><span>Kullandığı nesneler</span><strong>{{ finding.objectName }}</strong></div>
+                  }
+                  @if (finding.queryText) {
+                    <pre>{{ finding.queryText }}</pre>
+                  } @else {
+                    <div class="query-empty">SQL metni bu plan cache örneğinde alınamadı.</div>
+                  }
+                </section>
+              }
 
               <details class="evidence">
                 <summary><mat-icon>science</mat-icon> Teknik kanıtı göster</summary>
@@ -116,10 +136,11 @@ type FindingFilter = 'Open' | 'All' | 'Resolved';
     .list{display:grid;gap:16px}.finding{position:relative;overflow:hidden;border:1px solid #e0e6ef;border-radius:16px;box-shadow:0 8px 28px rgba(15,23,42,.05)}.finding:before{content:'';position:absolute;inset:0 auto 0 0;width:4px;background:#9aa7ba}.finding.high:before{background:#e07b24}.finding.critical:before{background:#c63b35}.finding.resolved{opacity:.69}.finding mat-card-content{padding:20px 22px 18px}
     .card-head{display:flex;justify-content:space-between;gap:18px}.identity{display:flex;gap:13px;min-width:0}.icon-wrap{width:42px;height:42px;flex:0 0 42px;border-radius:11px;display:grid;place-items:center;background:#eef2f7;color:#536174}.icon-wrap.s3{background:#fff0df;color:#b45e12}.icon-wrap.s4{background:#ffe8e5;color:#b52e2a}.icon-wrap mat-icon{font-size:21px;width:21px;height:21px}.eyebrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;color:#748196;font-size:.68rem}.eyebrow span{background:#f3f6f9;border-radius:999px;padding:4px 7px}.eyebrow .severity{font-weight:800}.severity.s4{background:#fee2e2;color:#a91d1d}.severity.s3{background:#ffedd5;color:#a64b00}.severity.s2{background:#fef3c7;color:#8a6300}.severity.s1{background:#e0f2fe;color:#075985}.severity.s0{background:#e9eef5;color:#475569}.card-head h2{margin:8px 0 5px;font-size:1.07rem;line-height:1.35}.scope{display:flex;align-items:center;gap:5px;color:#68778d;font-size:.72rem}.scope mat-icon{font-size:15px;width:15px;height:15px}.score{min-width:70px;height:max-content;text-align:center;background:#f5f7fb;border:1px solid #e8ecf2;border-radius:11px;padding:9px}.score strong{display:block;font-size:1.25rem}.score small{font-size:.56rem;color:#7b8799;letter-spacing:.09em}
     .diagnosis-grid{display:grid;grid-template-columns:1.15fr 1fr 1fr;gap:10px;margin:17px 0 14px}.answer{padding:13px 14px;border:1px solid #e7ebf2;border-radius:11px;background:#fafbfd}.answer.primary{background:#f6f8ff;border-color:#dde4ff}.answer.action{background:#f4faf7;border-color:#dcefe4}.answer-title{display:flex;align-items:center;gap:6px;font-size:.7rem;font-weight:800;color:#344054;text-transform:uppercase;letter-spacing:.035em}.answer-title mat-icon{font-size:17px;width:17px;height:17px;color:#60708a}.answer p{margin:8px 0 0;color:#4d5b70;font-size:.8rem;line-height:1.5}
-    .context-row{display:grid;grid-template-columns:1.1fr 1.1fr 1.2fr .55fr .65fr;border:1px solid #e8ecf2;border-radius:10px;overflow:hidden}.context-row div{padding:10px 12px;border-right:1px solid #e8ecf2;min-width:0}.context-row div:last-child{border:0}.context-row span,.context-row strong{display:block}.context-row span{font-size:.62rem;color:#8a96a8;margin-bottom:3px}.context-row strong{font-size:.73rem;color:#344054;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .context-row{display:grid;grid-template-columns:1.1fr 1.1fr 1.6fr .55fr .65fr;border:1px solid #e8ecf2;border-radius:10px;overflow:hidden}.context-row div{padding:10px 12px;border-right:1px solid #e8ecf2;min-width:0}.context-row div:last-child{border:0}.context-row span,.context-row strong{display:block}.context-row span{font-size:.62rem;color:#8a96a8;margin-bottom:3px}.context-row strong{font-size:.73rem;color:#344054;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .query-context{margin-top:13px;border:1px solid #d9e1ee;border-radius:12px;overflow:hidden;background:#0f172a;color:#dbe6f4}.query-head{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px 12px;background:#162238;border-bottom:1px solid rgba(255,255,255,.08)}.query-title{display:flex;align-items:center;gap:6px;font-size:.75rem}.query-title mat-icon{font-size:17px;width:17px;height:17px}.query-flags{display:flex;flex-wrap:wrap;gap:6px}.query-flags span{font-size:.61rem;background:rgba(255,255,255,.08);padding:4px 7px;border-radius:999px;color:#c5cfdd}.query-flags span.ok{background:rgba(37,183,121,.17);color:#90e3bd}.objects{padding:9px 12px;background:#111d31;border-bottom:1px solid rgba(255,255,255,.07)}.objects span,.objects strong{display:block}.objects span{font-size:.6rem;color:#8391a7;text-transform:uppercase}.objects strong{margin-top:3px;font-size:.7rem;color:#e2e8f0;line-height:1.45}.query-context pre{margin:0;max-height:260px;overflow:auto;padding:13px;white-space:pre-wrap;word-break:break-word;font-size:.72rem;line-height:1.5;color:#dbe6f4}.query-empty{padding:13px;color:#94a3b8;font-size:.72rem}
     .evidence{margin-top:13px;border-top:1px solid #edf0f5;padding-top:11px}.evidence summary{display:flex;align-items:center;gap:6px;width:max-content;cursor:pointer;color:#59687d;font-size:.74rem;font-weight:700}.evidence summary mat-icon{font-size:17px;width:17px;height:17px}.evidence-body{padding:10px 3px 2px}.evidence-body p{margin:0 0 10px;color:#59677a;line-height:1.55;font-size:.77rem}.metrics{display:flex;flex-wrap:wrap;gap:14px;color:#8390a2;font-size:.68rem}.metrics strong{color:#344054;margin-left:3px}
     @media(max-width:1050px){.diagnosis-grid{grid-template-columns:1fr}.context-row{grid-template-columns:1fr 1fr}.context-row div{border-bottom:1px solid #e8ecf2}.context-row div:nth-child(even){border-right:0}}
-    @media(max-width:700px){.heading{display:block}.summary-grid{margin-top:12px}.toolbar{display:block}.legend{margin-top:8px}.card-head{display:block}.score{margin-top:10px;width:66px}.context-row{grid-template-columns:1fr}.context-row div{border-right:0}}
+    @media(max-width:700px){.heading{display:block}.summary-grid{margin-top:12px}.toolbar{display:block}.legend{margin-top:8px}.card-head{display:block}.score{margin-top:10px;width:66px}.context-row{grid-template-columns:1fr}.context-row div{border-right:0}.query-head{display:block}.query-flags{margin-top:8px}}
   `]
 })
 export class FindingsComponent implements OnInit {

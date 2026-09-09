@@ -11,5 +11,9 @@ export interface StatisticsStatus {
   modificationPercent: number;
   lastUpdated?: string | null;
   samplePercent?: number | null;
+  diagnosticLevel: string;
+  diagnosticHeadline: string;
+  diagnosticSummary: string;
+  suggestedInspection: string;
   capturedAt: string;
 }

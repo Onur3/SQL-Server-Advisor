@@ -8,4 +8,5 @@
     <Project Path="src/SqlServerAdvisor.Api/SqlServerAdvisor.Api.csproj" />
     <Project Path="src/SqlServerAdvisor.Worker/SqlServerAdvisor.Worker.csproj" />
   </Folder>
+  <Folder Name="/tests/"><Project Path="tests/SqlServerAdvisor.Checks/SqlServerAdvisor.Checks.csproj" /></Folder>
 </Solution>

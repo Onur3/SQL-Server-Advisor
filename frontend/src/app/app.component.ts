@@ -33,6 +33,8 @@ import { MatIconModule } from '@angular/material/icon';
           <a mat-list-item routerLink="/recommendations" routerLinkActive="active">
             <mat-icon matListItemIcon>tips_and_updates</mat-icon><span matListItemTitle>Öneriler</span>
           </a>
+        <a mat-list-item routerLink="/waits" routerLinkActive="active"><mat-icon matListItemIcon>hourglass_top</mat-icon><span matListItemTitle>Wait Stats</span></a>
+          <a mat-list-item routerLink="/blocking" routerLinkActive="active"><mat-icon matListItemIcon>account_tree</mat-icon><span matListItemTitle>Blocking Detail</span></a>
         </mat-nav-list>
       </mat-sidenav>
       <mat-sidenav-content>

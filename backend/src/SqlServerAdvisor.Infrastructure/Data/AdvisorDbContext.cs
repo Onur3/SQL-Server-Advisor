@@ -172,6 +172,8 @@ public sealed class AdvisorDbContext(DbContextOptions<AdvisorDbContext> options)
         modelBuilder.Entity<WaitSnapshot>(b =>
         {
             b.ToTable("Wait", "SNP");
+            b.Property(x => x.SignalWaitTimeMs).HasColumnName("SignalWaitMs");
+            b.Property(x => x.DeltaSignalWaitTimeMs).HasColumnName("DeltaSignalWaitMs");
             b.HasKey(x => x.Id);
             b.Property(x => x.WaitType).HasMaxLength(120).IsRequired();
             b.HasIndex(x => new { x.ServerProfileId, x.WaitType, x.CapturedAt });
@@ -204,6 +206,7 @@ public sealed class AdvisorDbContext(DbContextOptions<AdvisorDbContext> options)
         modelBuilder.Entity<BlockingEvent>(b =>
         {
             b.ToTable("Blocking", "EVT");
+            b.Property(x => x.BlockerStatus).HasMaxLength(30);
             b.HasKey(x => x.Id);
             b.Property(x => x.DatabaseName).HasMaxLength(128);
             b.Property(x => x.WaitType).HasMaxLength(120);

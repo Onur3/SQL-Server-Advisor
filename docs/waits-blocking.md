@@ -1,0 +1,15 @@
+# Wait Stats and Blocking Detail
+
+Deployment discovers 005_waits_blocking.sql automatically. It is repeatable and modifies only SQLAdvisor. Nullable legacy counters are normalized and EF mappings retain SignalWaitMs / DeltaSignalWaitMs.
+
+Independent WaitStats (60s) and BlockingDetail (15s) schedules use optional ADM.CollectorSetting rows: IsEnabled, IntervalSeconds (5–3600), TimeoutSeconds (1–30, default 5). Missing settings use defaults, including new servers. COL.CollectorRun records success, empty samples and failure. Failed collections do not resolve findings or save partial telemetry. Run a single worker instance; scheduling has no distributed lease.
+
+Wait counters are persisted including system waits. First observation, restart, counter decreases, disappeared counters and gaps over five minutes establish a baseline. A reset followed by counters overtaking their previous values between polls cannot be detected. WAIT-001 uses an explicit diagnostic allowlist (lock, page I/O latch, log, memory grant, threadpool, scheduler yield), at least 5000 ms and half the measured interval. Unknown, idle, background and parallel-consumer waits never alert. Totals accumulate across tasks and are not utilization percentages. Baseline-only or failed collection does not resolve existing wait findings.
+
+BLK-002 reports requests waiting at least 15 seconds. Detail includes request/blocker IDs, database, wait resource, waiting SQL, blocker status, open transactions and most recent blocker batch. Sleeping blockers remain visible. Negative IDs identify special owners. SQL text is capped at 4000 characters; the most recent blocker batch is not necessarily currently executing. Polling may miss short incidents. BLK-001 remains a separate health-summary rule.
+
+GET /api/telemetry/{serverId}/waits and /blocking return latest run status, last successful run, enabled/stale flags and the last successful sample. Unknown server: 404; invalid kind: 400. Responses cap wait types at 2000 and blocking at 1000 longest waits. Successful empty blocking never shows an older incident. UI /waits and /blocking include selection, refresh, loading/error/stale/empty states and SQL disclosure. Existing application authentication applies; SQL text can contain sensitive literals.
+
+SQL Server 2019 requires VIEW SERVER STATE; 2022+ requires VIEW SERVER PERFORMANCE STATE. The manual login template gates newer permission syntax by major version. Reference: https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-views/sys-dm-os-wait-stats-transact-sql . Monitoring issues SELECT only. No resets, session termination or configuration changes. Recommendation.CanExecute remains false with the existing database constraint.
+
+Validation: dotnet build backend/SqlServerAdvisor.slnx -c Release; dotnet run --project backend/tests/SqlServerAdvisor.Checks -c Release -- .; npm run build in frontend. CI applies migrations twice and checks EF roundtrips in disposable SQL Server 2019. Production load and Windows service/IIS require environment-specific smoke tests. Retention is not automated; size SQLAdvisor for the polling rate.

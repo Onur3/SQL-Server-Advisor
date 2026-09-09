@@ -18,7 +18,8 @@ BEGIN
 END
 GO
 
-GRANT VIEW SERVER PERFORMANCE STATE TO [SqlAdvisorReader];
+IF CONVERT(int, SERVERPROPERTY('ProductMajorVersion')) >= 16
+    EXEC(N'GRANT VIEW SERVER PERFORMANCE STATE TO [SqlAdvisorReader];');
 GRANT VIEW SERVER STATE TO [SqlAdvisorReader]; -- compatibility for older monitored versions / DMVs
 GRANT VIEW ANY DATABASE TO [SqlAdvisorReader];
 GO

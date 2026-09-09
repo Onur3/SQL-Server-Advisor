@@ -13,6 +13,7 @@ public static class DependencyInjection
         services.AddSingleton<IMonitoredConnectionStringFactory, MonitoredConnectionStringFactory>();
         services.AddSingleton<IServerCapabilityScanner, ServerCapabilityScanner>();
         services.AddSingleton<IServerHealthCollector, ServerHealthCollector>();
+        services.AddSingleton<WaitBlockingCollector>();
         return services;
     }
 }

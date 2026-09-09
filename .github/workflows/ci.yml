@@ -14,6 +14,17 @@ jobs:
   backend:
     name: .NET 10 backend
     runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2019-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: Advisor_CI_Only_947!password
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd="/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Advisor_CI_Only_947!password' -C -Q 'SELECT 1' || /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'Advisor_CI_Only_947!password' -Q 'SELECT 1'"
+          --health-interval=10s --health-timeout=5s --health-retries=20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -23,6 +34,11 @@ jobs:
         run: dotnet restore backend/SqlServerAdvisor.slnx
       - name: Build
         run: dotnet build backend/SqlServerAdvisor.slnx --configuration Release --no-restore
+
+      - name: Analysis and SQL compatibility checks
+        env:
+          SQLADVISOR_TEST_CONNECTION: Server=localhost,1433;Database=master;User ID=sa;Password=Advisor_CI_Only_947!password;TrustServerCertificate=true
+        run: dotnet run --project backend/tests/SqlServerAdvisor.Checks --configuration Release --no-build -- .
 
   frontend:
     name: Angular 22 frontend

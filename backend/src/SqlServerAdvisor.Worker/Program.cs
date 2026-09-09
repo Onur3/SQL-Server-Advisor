@@ -15,6 +15,7 @@ builder.Services.AddMonitoredSqlServer();
 builder.Services.AddAdvisorAnalysis();
 builder.Services.AddHostedService<HeartbeatWorker>();
 builder.Services.AddHostedService<ServerSnapshotWorker>();
+builder.Services.AddHostedService<WaitBlockingWorker>();
 
 var host = builder.Build();
 await host.RunAsync();

@@ -70,6 +70,9 @@ public sealed class ConfigurationSnapshot
 
 public sealed class WaitSnapshot
 {
+    public DateTime? SqlServerStartTime { get; set; }
+    public bool IsBaseline { get; set; }
+    public long IntervalMs { get; set; }
     public long Id { get; set; }
     public Guid ServerProfileId { get; set; }
     public string WaitType { get; set; } = string.Empty;
@@ -119,6 +122,10 @@ public sealed class TempDbSnapshot
 
 public sealed class BlockingEvent
 {
+    public int RequestId { get; set; }
+    public string? BlockerStatus { get; set; }
+    public string? BlockerSqlText { get; set; }
+    public int? BlockerOpenTransactions { get; set; }
     public long Id { get; set; }
     public Guid ServerProfileId { get; set; }
     public int SessionId { get; set; }

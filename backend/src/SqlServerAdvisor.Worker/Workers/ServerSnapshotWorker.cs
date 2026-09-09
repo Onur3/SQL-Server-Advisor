@@ -138,7 +138,7 @@ public sealed class ServerSnapshotWorker(
         }
     }
 
-    private static async Task<Finding> UpsertFindingAsync(
+    internal static async Task<Finding> UpsertFindingAsync(
         AdvisorDbContext db,
         Finding finding,
         CancellationToken cancellationToken)
@@ -165,7 +165,7 @@ public sealed class ServerSnapshotWorker(
         return existing;
     }
 
-    private static async Task ResolveInactiveFindingsAsync(
+    internal static async Task ResolveInactiveFindingsAsync(
         AdvisorDbContext db,
         Guid serverId,
         string[] ruleIds,

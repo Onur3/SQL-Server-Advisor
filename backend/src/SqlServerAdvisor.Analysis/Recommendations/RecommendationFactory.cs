@@ -9,6 +9,16 @@ public sealed class RecommendationFactory : IRecommendationFactory
     {
         var recommendation = finding.RuleId switch
         {
+            "WAIT-001" => new Recommendation
+            {
+                Title = "Inspect interval waits and correlate with workload",
+                Explanation = finding.TechnicalDescription,
+                RecommendedAction = "Compare repeated intervals with request, storage and CPU metrics. Wait totals accumulate across tasks and are not wall-clock utilization. Review with your DBA.",
+                ScriptText = "SELECT wait_type, waiting_tasks_count, wait_time_ms, signal_wait_time_ms FROM sys.dm_os_wait_stats ORDER BY wait_time_ms DESC;",
+                PriorityScore = finding.FindingScore, ConfidenceScore = finding.ConfidenceScore,
+                ExpectedBenefit = "Medium", RiskLevel = "Low", Status = "New", CanExecute = false
+            },
+            "BLK-002" => CreateBlockingRecommendation(finding),
             "BLK-001" => CreateBlockingRecommendation(finding),
             "CPU-001" => CreateCpuRecommendation(finding),
             "MEM-001" => CreateMemoryRecommendation(finding),

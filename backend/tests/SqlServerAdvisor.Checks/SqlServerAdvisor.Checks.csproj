@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+<PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+<ItemGroup><ProjectReference Include="../../src/SqlServerAdvisor.Analysis/SqlServerAdvisor.Analysis.csproj" /><ProjectReference Include="../../src/SqlServerAdvisor.Infrastructure/SqlServerAdvisor.Infrastructure.csproj" /><ProjectReference Include="../../src/SqlServerAdvisor.SqlServer/SqlServerAdvisor.SqlServer.csproj" /></ItemGroup>
+</Project>

@@ -59,6 +59,7 @@ public sealed class StatisticsAdvisorCollector(IMonitoredConnectionStringFactory
             cancellationToken: cancellationToken))).AsList();
 
         var statistics = new List<StatisticsSnapshot>();
+        var warnings = new List<string>();
         var capturedAt = DateTimeOffset.UtcNow;
 
         foreach (var databaseName in databaseNames)
@@ -82,10 +83,14 @@ public sealed class StatisticsAdvisorCollector(IMonitoredConnectionStringFactory
             }
             catch (SqlException ex) when (ex.Number is 229 or 297 or 916)
             {
-                // Skip databases where the monitoring identity lacks read-only metadata access.
+                warnings.Add($"{databaseName}: statistics analizi atlandı; CONNECT / VIEW DATABASE STATE / VIEW DEFINITION yetkilerini kontrol edin. SQL {ex.Number}.");
             }
         }
 
-        return new CollectorBatch { Statistics = statistics };
+        return new CollectorBatch
+        {
+            Statistics = statistics,
+            Warnings = warnings
+        };
     }
 }

@@ -32,7 +32,8 @@ public sealed class StatisticsController(AdvisorDbContext db) : ControllerBase
         var latest = recent
             .GroupBy(x => new { x.ServerProfileId, x.DatabaseName, x.ObjectId, x.StatisticsId })
             .Select(x => x.OrderByDescending(y => y.CapturedAt).First())
-            .OrderByDescending(x => x.Rows == 0 ? 0m : x.ModificationCounter * 100m / x.Rows)
+            .OrderByDescending(x => x.NoRecompute)
+            .ThenByDescending(x => x.Rows == 0 ? 0m : x.ModificationCounter * 100m / x.Rows)
             .ThenByDescending(x => x.ModificationCounter)
             .Take(take)
             .ToList();
@@ -46,12 +47,17 @@ public sealed class StatisticsController(AdvisorDbContext db) : ControllerBase
         return Ok(latest.Select(x =>
         {
             var modificationPercent = x.Rows == 0 ? 0m : Math.Round(x.ModificationCounter * 100m / x.Rows, 2);
+            var statisticsType = x.AutoCreated ? "AUTO" : x.UserCreated ? "USER" : "INDEX";
             var interpretation = StatisticsInterpretation.Build(
                 x.Rows,
                 x.RowsSampled,
                 modificationPercent,
                 x.LastUpdated,
                 x.SamplePercent,
+                x.AutoCreated,
+                x.UserCreated,
+                x.NoRecompute,
+                x.HasFilter,
                 now);
 
             return new StatisticsStatusDto(
@@ -61,12 +67,18 @@ public sealed class StatisticsController(AdvisorDbContext db) : ControllerBase
                 x.DatabaseName,
                 x.TableName,
                 x.StatisticsName,
+                statisticsType,
                 x.Rows,
                 x.RowsSampled,
                 x.ModificationCounter,
                 modificationPercent,
                 x.LastUpdated,
                 x.SamplePercent,
+                x.AutoCreated,
+                x.UserCreated,
+                x.NoRecompute,
+                x.HasFilter,
+                x.FilterDefinition,
                 interpretation.Level,
                 interpretation.Headline,
                 interpretation.Summary,

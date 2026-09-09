@@ -70,12 +70,15 @@ public sealed class QueriesController(AdvisorDbContext db) : ControllerBase
                     runtime.AverageDurationMs,
                     runtime.AverageLogicalReads,
                     runtime.ImpactScore);
+                var displayDatabaseName = IsUnresolvedDatabaseName(query.DatabaseName)
+                    ? "Ad-hoc / DB bağlamı yok"
+                    : query.DatabaseName;
 
                 return new QueryPerformanceDto(
                     query.Id,
                     runtime.ServerProfileId,
                     serverName ?? runtime.ServerProfileId.ToString(),
-                    query.DatabaseName,
+                    displayDatabaseName,
                     query.QueryHash,
                     query.ObjectName,
                     query.StatementText,
@@ -126,4 +129,9 @@ public sealed class QueriesController(AdvisorDbContext db) : ControllerBase
             plan.FirstSeenAt,
             plan.LastSeenAt));
     }
+
+    private static bool IsUnresolvedDatabaseName(string? databaseName) =>
+        string.IsNullOrWhiteSpace(databaseName) ||
+        databaseName.Equals("<unknown>", StringComparison.OrdinalIgnoreCase) ||
+        databaseName.Contains("DB bağlamı yok", StringComparison.OrdinalIgnoreCase);
 }

@@ -14,12 +14,14 @@ public sealed class QueryPerformanceCollector(IMonitoredConnectionStringFactory 
 
     private const string QuerySql = """
         SELECT TOP (50)
-            COALESCE(DB_NAME(st.dbid), N'<unknown>') AS DatabaseName,
+            COALESCE(DB_NAME(ids.ResolvedDbId), N'Ad-hoc / DB bağlamı yok') AS DatabaseName,
             CONVERT(varchar(130), qs.query_hash, 1) AS QueryHash,
             CONVERT(varchar(130), qs.query_hash, 1) AS NormalizedHash,
-            st.objectid AS ObjectId,
-            CASE WHEN st.objectid IS NULL THEN NULL
-                 ELSE QUOTENAME(OBJECT_SCHEMA_NAME(st.objectid, st.dbid)) + N'.' + QUOTENAME(OBJECT_NAME(st.objectid, st.dbid))
+            ids.ResolvedObjectId AS ObjectId,
+            CASE
+                WHEN ids.ResolvedDbId IS NULL OR ids.ResolvedObjectId IS NULL OR ids.ResolvedObjectId <= 0 THEN NULL
+                ELSE QUOTENAME(OBJECT_SCHEMA_NAME(ids.ResolvedObjectId, ids.ResolvedDbId))
+                   + N'.' + QUOTENAME(OBJECT_NAME(ids.ResolvedObjectId, ids.ResolvedDbId))
             END AS ObjectName,
             SUBSTRING(
                 st.text,
@@ -44,6 +46,18 @@ public sealed class QueryPerformanceCollector(IMonitoredConnectionStringFactory 
         FROM sys.dm_exec_query_stats AS qs
         CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) AS st
         OUTER APPLY sys.dm_exec_query_plan(qs.plan_handle) AS qp
+        OUTER APPLY
+        (
+            SELECT TOP (1) TRY_CONVERT(int, pa.value) AS DbId
+            FROM sys.dm_exec_plan_attributes(qs.plan_handle) AS pa
+            WHERE pa.attribute = N'dbid'
+        ) AS planDb
+        CROSS APPLY
+        (
+            SELECT
+                COALESCE(NULLIF(st.dbid, 0), NULLIF(qp.dbid, 0), NULLIF(planDb.DbId, 0)) AS ResolvedDbId,
+                COALESCE(NULLIF(st.objectid, 0), NULLIF(qp.objectid, 0)) AS ResolvedObjectId
+        ) AS ids
         WHERE st.text IS NOT NULL
           AND st.text NOT LIKE N'%sys.dm_exec_query_stats%'
           AND st.text NOT LIKE N'%SQLServerAdvisor%'

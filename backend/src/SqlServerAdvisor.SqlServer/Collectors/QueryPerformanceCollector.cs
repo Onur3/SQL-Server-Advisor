@@ -1,3 +1,4 @@
+using System.Xml.Linq;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using SqlServerAdvisor.Application.Contracts;
@@ -75,6 +76,93 @@ public sealed class QueryPerformanceCollector(IMonitoredConnectionStringFactory 
             commandTimeout: DefaultTimeoutSeconds,
             cancellationToken: cancellationToken))).AsList();
 
-        return new CollectorBatch { Queries = rows };
+        var enriched = rows.Select(EnrichFromPlan).ToList();
+        return new CollectorBatch { Queries = enriched };
     }
+
+    private static QueryObservation EnrichFromPlan(QueryObservation observation)
+    {
+        if (string.IsNullOrWhiteSpace(observation.PlanXml))
+            return observation;
+
+        var resolvedDatabase = observation.DatabaseName;
+        var resolvedObject = observation.ObjectName;
+
+        try
+        {
+            var document = XDocument.Parse(observation.PlanXml, LoadOptions.None);
+            var objects = document.Descendants()
+                .Where(x => x.Name.LocalName == "Object")
+                .Select(x => new PlanObject(
+                    CleanIdentifier(x.Attribute("Database")?.Value),
+                    CleanIdentifier(x.Attribute("Schema")?.Value),
+                    CleanIdentifier(x.Attribute("Table")?.Value),
+                    CleanIdentifier(x.Attribute("Index")?.Value)))
+                .Where(x => !string.IsNullOrWhiteSpace(x.Table))
+                .Distinct()
+                .ToList();
+
+            if (objects.Count == 0)
+                return observation;
+
+            var databases = objects
+                .Select(x => x.Database)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (IsUnresolvedDatabase(resolvedDatabase) && databases.Count == 1)
+                resolvedDatabase = databases[0]!;
+            else if (IsUnresolvedDatabase(resolvedDatabase) && databases.Count > 1)
+                resolvedDatabase = "Çoklu veritabanı";
+
+            if (string.IsNullOrWhiteSpace(resolvedObject))
+            {
+                var names = objects
+                    .Select(x => FormatObject(x, databases.Count > 1))
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(8)
+                    .ToList();
+
+                if (names.Count > 0)
+                    resolvedObject = Truncate(string.Join("; ", names), 500);
+            }
+        }
+        catch
+        {
+            // Plan XML enrichment is best-effort. Raw telemetry must still be collected.
+        }
+
+        return observation with
+        {
+            DatabaseName = resolvedDatabase,
+            ObjectName = resolvedObject
+        };
+    }
+
+    private static string FormatObject(PlanObject item, bool includeDatabase)
+    {
+        var parts = new List<string>();
+        if (includeDatabase && !string.IsNullOrWhiteSpace(item.Database)) parts.Add(item.Database!);
+        if (!string.IsNullOrWhiteSpace(item.Schema)) parts.Add(item.Schema!);
+        if (!string.IsNullOrWhiteSpace(item.Table)) parts.Add(item.Table!);
+        return string.Join(".", parts);
+    }
+
+    private static string? CleanIdentifier(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        return value.Trim().Trim('[', ']');
+    }
+
+    private static bool IsUnresolvedDatabase(string? databaseName) =>
+        string.IsNullOrWhiteSpace(databaseName) ||
+        databaseName.Contains("Ad-hoc", StringComparison.OrdinalIgnoreCase) ||
+        databaseName.Contains("bağlamı yok", StringComparison.OrdinalIgnoreCase);
+
+    private static string Truncate(string value, int maxLength) =>
+        value.Length <= maxLength ? value : value[..maxLength];
+
+    private sealed record PlanObject(string? Database, string? Schema, string? Table, string? Index);
 }

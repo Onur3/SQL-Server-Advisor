@@ -14,6 +14,7 @@ public static class DependencyInjection
         services.AddSingleton<IAnalysisRule, LowAvailableMemoryRule>();
         services.AddSingleton<ITelemetryAnalysisRule, WaitBlockingPressureRule>();
         services.AddSingleton<IQueryAnalysisRule, ExpensiveQueryRule>();
+        services.AddSingleton<IIndexAnalysisRule, IndexAdvisorRule>();
         services.AddSingleton<IRecommendationFactory, RecommendationFactory>();
         return services;
     }

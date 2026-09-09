@@ -5,6 +5,7 @@ import { ConnectionTestResult, CreateServerRequest, DashboardServer, ServerListI
 import { FindingListItem, RecommendationListItem } from '../models/analysis.models';
 import { BlockingTelemetry, WaitTelemetry } from '../models/telemetry.models';
 import { QueryPerformance, QueryPlan } from '../models/query.models';
+import { FragmentedIndex, MissingIndexCandidate } from '../models/index.models';
 
 @Injectable({ providedIn: 'root' })
 export class AdvisorApiService {
@@ -61,5 +62,13 @@ export class AdvisorApiService {
 
   getQueryPlan(queryId: number): Observable<QueryPlan> {
     return this.http.get<QueryPlan>(`${this.baseUrl}/queries/${queryId}/plan`);
+  }
+
+  getFragmentedIndexes(take = 100): Observable<FragmentedIndex[]> {
+    return this.http.get<FragmentedIndex[]>(`${this.baseUrl}/indexes/fragmented`, { params: { take } });
+  }
+
+  getMissingIndexCandidates(take = 100): Observable<MissingIndexCandidate[]> {
+    return this.http.get<MissingIndexCandidate[]>(`${this.baseUrl}/indexes/missing`, { params: { take } });
   }
 }

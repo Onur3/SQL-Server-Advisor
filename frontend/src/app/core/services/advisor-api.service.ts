@@ -6,6 +6,7 @@ import { FindingListItem, RecommendationListItem } from '../models/analysis.mode
 import { BlockingTelemetry, WaitTelemetry } from '../models/telemetry.models';
 import { QueryPerformance, QueryPlan } from '../models/query.models';
 import { FragmentedIndex, MissingIndexCandidate } from '../models/index.models';
+import { StatisticsStatus } from '../models/statistics.models';
 
 @Injectable({ providedIn: 'root' })
 export class AdvisorApiService {
@@ -70,5 +71,9 @@ export class AdvisorApiService {
 
   getMissingIndexCandidates(take = 100): Observable<MissingIndexCandidate[]> {
     return this.http.get<MissingIndexCandidate[]>(`${this.baseUrl}/indexes/missing`, { params: { take } });
+  }
+
+  getStatisticsStatus(take = 100): Observable<StatisticsStatus[]> {
+    return this.http.get<StatisticsStatus[]>(`${this.baseUrl}/statistics`, { params: { take } });
   }
 }

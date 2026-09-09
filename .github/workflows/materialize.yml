@@ -13,25 +13,15 @@ jobs:
   materialize:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Validate package chunks
+      - uses: actions/checkout@v4
+      - name: Validate chunks
         shell: bash
         run: |
           set -euo pipefail
-          check() {
-            file="$1"; expected_len="$2"; expected_hash="$3"
-            tr -cd 'A-Za-z0-9+/=' < "packages/${file}.b64" > "/tmp/${file}.b64"
-            actual_len=$(wc -c < "/tmp/${file}.b64" | tr -d ' ')
-            actual_hash=$(sha256sum "/tmp/${file}.b64" | awk '{print $1}')
-            echo "${file} len=${actual_len} sha256=${actual_hash}"
-            test "$actual_len" = "$expected_len"
-            test "$actual_hash" = "$expected_hash"
-            base64 --decode "/tmp/${file}.b64" >/dev/null
-          }
+          check(){ f="$1"; l="$2"; h="$3"; tr -cd 'A-Za-z0-9+/=' < "packages/$f.b64" > "/tmp/$f.b64"; test "$(wc -c < /tmp/$f.b64 | tr -d ' ')" = "$l"; test "$(sha256sum /tmp/$f.b64 | awk '{print $1}')" = "$h"; echo "$f OK"; }
           check part00 12000 d8ba1b4fbdc11e755ee90a5e828f1f44fb85b24d6080f4387e74101acffb089a
-          check part010 4000 ea6ab9f97999abf3156ce65ff83aa582150956bab48269c2fb12f11fed04bb13
+          check part010a 2000 e594178c3c5516161bcc9294a01400902349d5ed7246ef26c89a677d67851082
+          check part010b 2000 b8b8ffb66904b875e0d64446854db7211b097ded364fedd1431ff0c7593f9b92
           check part011 4000 571faa517e11135187e72133eb275970de5d23ab788382444a874f066c6b152b
           check part012 4000 66a002cebd1c507bbc991c44fb12e3ce466079ecd42c357cdc3045c611f96aaa
           check part02 12000 71ce89dc9e3593da66da9622e5886af69e0d5174dccec98046c134cba4a64a2b
@@ -47,43 +37,30 @@ jobs:
           check part071 4000 5f48567b4b71e61a73dbd32317d8535c1c2dfa6f6b752ca7961bba4eef929aa8
           check part072 4000 3d97fd0d7cbca644b36b5b9ad641db62e9b2eba7c4cf0fc7ceaf9777f97a069d
           check part08 416 c78d60e2b2e35030d3e5332d0f5106a3d8f38bfcd43d9eb5b0d4cafb834ee79e
-
-      - name: Rebuild and validate source archive
+      - name: Rebuild archive
         shell: bash
         run: |
           set -euo pipefail
-          cat /tmp/part00.b64 /tmp/part010.b64 /tmp/part011.b64 /tmp/part012.b64 \
-              /tmp/part02.b64 /tmp/part03.b64 /tmp/part04.b64 \
-              /tmp/part050.b64 /tmp/part051.b64 /tmp/part052.b64 \
-              /tmp/part060.b64 /tmp/part061.b64 /tmp/part062.b64 \
-              /tmp/part070.b64 /tmp/part071.b64 /tmp/part072.b64 /tmp/part08.b64 \
-              > /tmp/sql-server-advisor.b64
-          base64 --decode /tmp/sql-server-advisor.b64 > /tmp/sql-server-advisor.zip
-          unzip -t /tmp/sql-server-advisor.zip
-
-      - name: Materialize repository tree
+          cat /tmp/part00.b64 /tmp/part010a.b64 /tmp/part010b.b64 /tmp/part011.b64 /tmp/part012.b64 /tmp/part02.b64 /tmp/part03.b64 /tmp/part04.b64 /tmp/part050.b64 /tmp/part051.b64 /tmp/part052.b64 /tmp/part060.b64 /tmp/part061.b64 /tmp/part062.b64 /tmp/part070.b64 /tmp/part071.b64 /tmp/part072.b64 /tmp/part08.b64 > /tmp/project.b64
+          base64 -d /tmp/project.b64 > /tmp/project.zip
+          unzip -t /tmp/project.zip
+      - name: Materialize source
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /tmp/sql-advisor-extract
-          mkdir -p /tmp/sql-advisor-extract
-          unzip -q /tmp/sql-server-advisor.zip -d /tmp/sql-advisor-extract
-          test -d /tmp/sql-advisor-extract/app/backend
-          test -d /tmp/sql-advisor-extract/app/frontend
-          test -d /tmp/sql-advisor-extract/app/database
-          rsync -a --exclude '.github' /tmp/sql-advisor-extract/app/ ./
+          rm -rf /tmp/extract && mkdir /tmp/extract
+          unzip -q /tmp/project.zip -d /tmp/extract
+          test -d /tmp/extract/app/backend
+          test -d /tmp/extract/app/frontend
+          test -d /tmp/extract/app/database
+          rsync -a --exclude '.github' /tmp/extract/app/ ./
           rm -rf packages
-
-      - name: Commit expanded source
+      - name: Commit source
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'SQL Server Advisor Bot'
           git config user.email '83568648+Onur3@users.noreply.github.com'
           git add -A
-          if git diff --cached --quiet; then
-            echo 'No source changes to commit.'
-            exit 0
-          fi
           git commit -m 'Import SQL Server Advisor source'
           git push

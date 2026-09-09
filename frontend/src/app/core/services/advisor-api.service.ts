@@ -2,6 +2,7 @@ import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { ConnectionTestResult, CreateServerRequest, DashboardServer, ServerListItem, WorkerStatus } from '../models/server.models';
+import { FindingListItem, RecommendationListItem } from '../models/analysis.models';
 
 @Injectable({ providedIn: 'root' })
 export class AdvisorApiService {
@@ -30,5 +31,13 @@ export class AdvisorApiService {
 
   getWorkerStatus(): Observable<WorkerStatus> {
     return this.http.get<WorkerStatus>(`${this.baseUrl}/dashboard/worker`);
+  }
+
+  getFindings(status = 'All'): Observable<FindingListItem[]> {
+    return this.http.get<FindingListItem[]>(`${this.baseUrl}/findings`, { params: { status } });
+  }
+
+  getRecommendations(status = 'All'): Observable<RecommendationListItem[]> {
+    return this.http.get<RecommendationListItem[]>(`${this.baseUrl}/recommendations`, { params: { status } });
   }
 }

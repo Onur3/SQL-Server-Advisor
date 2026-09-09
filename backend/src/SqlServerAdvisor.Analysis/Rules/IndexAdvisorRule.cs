@@ -55,9 +55,10 @@ public sealed class IndexAdvisorRule : IIndexAnalysisRule
             if (reads < 50 || missing.AvgUserImpact < 70m || missing.ImprovementMeasure < 500000m)
                 continue;
 
+            var improvementLog = (decimal)Math.Log10((double)Math.Max(10m, missing.ImprovementMeasure));
             var impact = Math.Min(95m, Math.Round(
                 45m + Math.Min(25m, missing.AvgUserImpact / 4m) +
-                Math.Min(25m, (decimal)Math.Log10(Math.Max(10m, missing.ImprovementMeasure)) * 3m), 2));
+                Math.Min(25m, improvementLog * 3m), 2));
             var severity = impact >= 85m ? FindingSeverity.High : FindingSeverity.Medium;
             var signature = $"{missing.DatabaseName}|{missing.TableName}|{missing.EqualityColumns}|{missing.InequalityColumns}|{missing.IncludedColumns}";
             var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(signature)))[..24];

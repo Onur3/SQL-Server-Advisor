@@ -27,8 +27,12 @@ import { MatIconModule } from '@angular/material/icon';
             <mat-icon matListItemIcon>dns</mat-icon><span matListItemTitle>SQL Sunucuları</span>
           </a>
           <a mat-list-item class="disabled"><mat-icon matListItemIcon>query_stats</mat-icon><span matListItemTitle>Sorgular</span></a>
-          <a mat-list-item class="disabled"><mat-icon matListItemIcon>rule</mat-icon><span matListItemTitle>Bulgular</span></a>
-          <a mat-list-item class="disabled"><mat-icon matListItemIcon>tips_and_updates</mat-icon><span matListItemTitle>Öneriler</span></a>
+          <a mat-list-item routerLink="/findings" routerLinkActive="active">
+            <mat-icon matListItemIcon>rule</mat-icon><span matListItemTitle>Bulgular</span>
+          </a>
+          <a mat-list-item routerLink="/recommendations" routerLinkActive="active">
+            <mat-icon matListItemIcon>tips_and_updates</mat-icon><span matListItemTitle>Öneriler</span>
+          </a>
         </mat-nav-list>
       </mat-sidenav>
       <mat-sidenav-content>

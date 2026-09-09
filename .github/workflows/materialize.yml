@@ -31,7 +31,9 @@ jobs:
             base64 --decode "/tmp/${file}.b64" >/dev/null
           }
           check part00 12000 d8ba1b4fbdc11e755ee90a5e828f1f44fb85b24d6080f4387e74101acffb089a
-          check part01 12000 38841436f417b344ee039ccb74a5a6da1359f7bef7e4ed2444071f6966aa5294
+          check part010 4000 ea6ab9f97999abf3156ce65ff83aa582150956bab48269c2fb12f11fed04bb13
+          check part011 4000 571faa517e11135187e72133eb275970de5d23ab788382444a874f066c6b152b
+          check part012 4000 66a002cebd1c507bbc991c44fb12e3ce466079ecd42c357cdc3045c611f96aaa
           check part02 12000 71ce89dc9e3593da66da9622e5886af69e0d5174dccec98046c134cba4a64a2b
           check part03 12000 416e9675d8dfe719095401e9513a74b13610fa12c819f7e6515693a27194cfdf
           check part04 12000 795e20e0df6b40b789cb097cb5e31778b1e2d78e23dce100ba46537cd3b6b10e
@@ -50,7 +52,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat /tmp/part00.b64 /tmp/part01.b64 /tmp/part02.b64 /tmp/part03.b64 /tmp/part04.b64 \
+          cat /tmp/part00.b64 /tmp/part010.b64 /tmp/part011.b64 /tmp/part012.b64 \
+              /tmp/part02.b64 /tmp/part03.b64 /tmp/part04.b64 \
               /tmp/part050.b64 /tmp/part051.b64 /tmp/part052.b64 \
               /tmp/part060.b64 /tmp/part061.b64 /tmp/part062.b64 \
               /tmp/part070.b64 /tmp/part071.b64 /tmp/part072.b64 /tmp/part08.b64 \

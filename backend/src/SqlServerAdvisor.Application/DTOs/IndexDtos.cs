@@ -17,6 +17,10 @@ public sealed record FragmentedIndexDto(
     long UserUpdates,
     decimal? AvgFragmentationPercent,
     long? PageCount,
+    string DiagnosticLevel,
+    string DiagnosticHeadline,
+    string DiagnosticSummary,
+    string SuggestedInspection,
     DateTimeOffset CapturedAt);
 
 public sealed record MissingIndexDto(
@@ -33,4 +37,8 @@ public sealed record MissingIndexDto(
     decimal AvgTotalUserCost,
     decimal AvgUserImpact,
     decimal ImprovementMeasure,
+    string DiagnosticLevel,
+    string DiagnosticHeadline,
+    string DiagnosticSummary,
+    string SuggestedInspection,
     DateTimeOffset CapturedAt);

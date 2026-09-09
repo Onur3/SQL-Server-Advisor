@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using SqlServerAdvisor.Analysis.Scoring;
 using SqlServerAdvisor.Application.Contracts;
+using SqlServerAdvisor.Application.DTOs;
 using SqlServerAdvisor.Domain.Entities;
 using SqlServerAdvisor.Infrastructure.Data;
 
@@ -8,7 +10,8 @@ namespace SqlServerAdvisor.Worker.Workers;
 public sealed class TelemetryWorker(
     IServiceScopeFactory scopeFactory,
     IEnumerable<IAdvisorCollector> collectors,
-    IEnumerable<ITelemetryAnalysisRule> rules,
+    IEnumerable<ITelemetryAnalysisRule> telemetryRules,
+    IEnumerable<IQueryAnalysisRule> queryRules,
     IRecommendationFactory recommendationFactory,
     ILogger<TelemetryWorker> logger) : BackgroundService
 {
@@ -87,6 +90,7 @@ public sealed class TelemetryWorker(
             var batch = await collector.CollectAsync(server, cancellationToken);
             var capturedAt = DateTimeOffset.UtcNow;
             var waitSnapshots = await BuildWaitSnapshotsAsync(db, server.Id, batch.Waits, capturedAt, cancellationToken);
+            var queryContexts = await PersistQueriesAsync(db, server.Id, batch.Queries, capturedAt, cancellationToken);
 
             if (waitSnapshots.Count > 0)
                 db.WaitSnapshots.AddRange(waitSnapshots);
@@ -94,33 +98,77 @@ public sealed class TelemetryWorker(
                 db.BlockingEvents.AddRange(batch.Blocking);
 
             var activeFindings = new List<Finding>();
-            var activeFingerprints = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var ruleIds = rules.SelectMany(x => x.RuleIds).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 
-            foreach (var rule in rules)
+            if (collector.Name.Equals("WaitBlocking", StringComparison.OrdinalIgnoreCase) ||
+                waitSnapshots.Count > 0 || batch.Blocking.Count > 0)
             {
-                var findings = await rule.EvaluateAsync(
-                    server.Id,
-                    capturedAt,
-                    waitSnapshots,
-                    batch.Blocking,
-                    cancellationToken);
+                var activeFingerprints = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var ruleIds = telemetryRules.SelectMany(x => x.RuleIds)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
 
-                foreach (var finding in findings)
+                foreach (var rule in telemetryRules)
                 {
-                    var tracked = await UpsertFindingAsync(db, finding, cancellationToken);
-                    activeFindings.Add(tracked);
-                    activeFingerprints.Add(tracked.Fingerprint);
+                    var findings = await rule.EvaluateAsync(
+                        server.Id,
+                        capturedAt,
+                        waitSnapshots,
+                        batch.Blocking,
+                        cancellationToken);
+
+                    foreach (var finding in findings)
+                    {
+                        var tracked = await UpsertFindingAsync(db, finding, cancellationToken);
+                        activeFindings.Add(tracked);
+                        activeFingerprints.Add(tracked.Fingerprint);
+                    }
                 }
+
+                await ResolveInactiveFindingsAsync(
+                    db,
+                    server.Id,
+                    ruleIds,
+                    activeFingerprints,
+                    capturedAt,
+                    cancellationToken);
             }
 
-            await ResolveInactiveFindingsAsync(
-                db,
-                server.Id,
-                ruleIds,
-                activeFingerprints,
-                capturedAt,
-                cancellationToken);
+            if (collector.Name.Equals("QueryPerformance", StringComparison.OrdinalIgnoreCase) ||
+                queryContexts.Count > 0)
+            {
+                var activeFingerprints = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var ruleIds = queryRules.SelectMany(x => x.RuleIds)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+                foreach (var context in queryContexts)
+                {
+                    foreach (var rule in queryRules)
+                    {
+                        var findings = await rule.EvaluateAsync(
+                            server.Id,
+                            capturedAt,
+                            context.Query,
+                            context.Runtime,
+                            cancellationToken);
+
+                        foreach (var finding in findings)
+                        {
+                            var tracked = await UpsertFindingAsync(db, finding, cancellationToken);
+                            activeFindings.Add(tracked);
+                            activeFingerprints.Add(tracked.Fingerprint);
+                        }
+                    }
+                }
+
+                await ResolveInactiveFindingsAsync(
+                    db,
+                    server.Id,
+                    ruleIds,
+                    activeFingerprints,
+                    capturedAt,
+                    cancellationToken);
+            }
 
             await db.SaveChangesAsync(cancellationToken);
 
@@ -139,7 +187,7 @@ public sealed class TelemetryWorker(
             }
 
             run.Status = "Success";
-            run.RowsCollected = waitSnapshots.Count + batch.Blocking.Count;
+            run.RowsCollected = waitSnapshots.Count + batch.Blocking.Count + queryContexts.Count;
             run.CompletedAt = DateTimeOffset.UtcNow;
             run.DurationMs = (long)(run.CompletedAt.Value - run.StartedAt).TotalMilliseconds;
             await db.SaveChangesAsync(cancellationToken);
@@ -158,7 +206,7 @@ public sealed class TelemetryWorker(
     private static async Task<List<WaitSnapshot>> BuildWaitSnapshotsAsync(
         AdvisorDbContext db,
         Guid serverId,
-        IReadOnlyList<SqlServerAdvisor.Application.DTOs.WaitObservation> observations,
+        IReadOnlyList<WaitObservation> observations,
         DateTimeOffset capturedAt,
         CancellationToken cancellationToken)
     {
@@ -206,6 +254,140 @@ public sealed class TelemetryWorker(
         return result;
     }
 
+    private static async Task<List<QueryContext>> PersistQueriesAsync(
+        AdvisorDbContext db,
+        Guid serverId,
+        IReadOnlyList<QueryObservation> observations,
+        DateTimeOffset capturedAt,
+        CancellationToken cancellationToken)
+    {
+        if (observations.Count == 0) return [];
+
+        var hashes = observations.Select(x => x.QueryHash).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var existingQueries = await db.Queries
+            .Where(x => x.ServerProfileId == serverId && hashes.Contains(x.QueryHash))
+            .ToListAsync(cancellationToken);
+
+        var queryMap = existingQueries.ToDictionary(
+            x => QueryKey(x.DatabaseName, x.QueryHash),
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var observation in observations)
+        {
+            var key = QueryKey(observation.DatabaseName, observation.QueryHash);
+            if (!queryMap.TryGetValue(key, out var query))
+            {
+                query = new QueryDefinition
+                {
+                    ServerProfileId = serverId,
+                    DatabaseName = observation.DatabaseName,
+                    QueryHash = observation.QueryHash,
+                    NormalizedHash = string.IsNullOrWhiteSpace(observation.NormalizedHash) ? observation.QueryHash : observation.NormalizedHash,
+                    ObjectId = observation.ObjectId,
+                    ObjectName = observation.ObjectName,
+                    StatementText = observation.StatementText,
+                    FirstSeenAt = capturedAt,
+                    LastSeenAt = capturedAt
+                };
+                db.Queries.Add(query);
+                queryMap[key] = query;
+            }
+            else
+            {
+                query.LastSeenAt = capturedAt;
+                query.ObjectId = observation.ObjectId;
+                query.ObjectName = observation.ObjectName;
+                query.StatementText = observation.StatementText;
+            }
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        var queryIds = queryMap.Values.Select(x => x.Id).Distinct().ToArray();
+        var existingPlans = await db.QueryPlans
+            .Where(x => queryIds.Contains(x.QueryId))
+            .ToListAsync(cancellationToken);
+
+        var planMap = existingPlans.ToDictionary(
+            x => PlanKey(x.QueryId, x.PlanHash, x.Source),
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var observation in observations)
+        {
+            if (string.IsNullOrWhiteSpace(observation.PlanHash)) continue;
+
+            var query = queryMap[QueryKey(observation.DatabaseName, observation.QueryHash)];
+            var source = string.IsNullOrWhiteSpace(observation.Source) ? "PlanCache" : observation.Source;
+            var key = PlanKey(query.Id, observation.PlanHash, source);
+
+            if (!planMap.TryGetValue(key, out var plan))
+            {
+                plan = new QueryPlan
+                {
+                    QueryId = query.Id,
+                    PlanHash = observation.PlanHash,
+                    Source = source,
+                    HasActualRuntimeCounters = observation.HasActualRuntimeCounters,
+                    PlanXml = observation.PlanXml ?? string.Empty,
+                    FirstSeenAt = capturedAt,
+                    LastSeenAt = capturedAt
+                };
+                db.QueryPlans.Add(plan);
+                planMap[key] = plan;
+            }
+            else
+            {
+                plan.LastSeenAt = capturedAt;
+                if (!string.IsNullOrWhiteSpace(observation.PlanXml))
+                    plan.PlanXml = observation.PlanXml;
+            }
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        var result = new List<QueryContext>(observations.Count);
+        foreach (var observation in observations)
+        {
+            var query = queryMap[QueryKey(observation.DatabaseName, observation.QueryHash)];
+            QueryPlan? plan = null;
+            var source = string.IsNullOrWhiteSpace(observation.Source) ? "PlanCache" : observation.Source;
+
+            if (!string.IsNullOrWhiteSpace(observation.PlanHash))
+                planMap.TryGetValue(PlanKey(query.Id, observation.PlanHash, source), out plan);
+
+            var runtime = new QueryRuntimeSnapshot
+            {
+                ServerProfileId = serverId,
+                QueryId = query.Id,
+                PlanId = plan?.Id,
+                Source = source,
+                ExecutionCount = observation.ExecutionCount,
+                TotalCpuMs = observation.TotalCpuMs,
+                AverageCpuMs = observation.AverageCpuMs,
+                TotalDurationMs = observation.TotalDurationMs,
+                AverageDurationMs = observation.AverageDurationMs,
+                TotalLogicalReads = observation.TotalLogicalReads,
+                AverageLogicalReads = observation.AverageLogicalReads,
+                TotalLogicalWrites = observation.TotalLogicalWrites,
+                ImpactScore = QueryPerformanceScorer.Calculate(
+                    observation.ExecutionCount,
+                    observation.AverageCpuMs,
+                    observation.AverageDurationMs,
+                    observation.AverageLogicalReads),
+                LastExecutionTime = observation.LastExecutionTime,
+                CapturedAt = capturedAt
+            };
+
+            db.QueryRuntimeSnapshots.Add(runtime);
+            result.Add(new QueryContext(query, runtime));
+        }
+
+        return result;
+    }
+
+    private static string QueryKey(string databaseName, string queryHash) => $"{databaseName}\u001f{queryHash}";
+    private static string PlanKey(long queryId, string planHash, string source) => $"{queryId}\u001f{planHash}\u001f{source}";
+
     private static async Task<Finding> UpsertFindingAsync(
         AdvisorDbContext db,
         Finding finding,
@@ -229,6 +411,7 @@ public sealed class TelemetryWorker(
         existing.FindingScore = finding.FindingScore;
         existing.Title = finding.Title;
         existing.TechnicalDescription = finding.TechnicalDescription;
+        existing.QueryId = finding.QueryId;
         existing.DatabaseName = finding.DatabaseName;
         existing.ObjectName = finding.ObjectName;
         existing.ResolvedAt = null;
@@ -269,4 +452,6 @@ public sealed class TelemetryWorker(
         foreach (var recommendation in recommendations)
             recommendation.Status = "Resolved";
     }
+
+    private sealed record QueryContext(QueryDefinition Query, QueryRuntimeSnapshot Runtime);
 }

@@ -237,7 +237,10 @@ public sealed class TelemetryWorker(
                 db.Recommendations.Add(recommendation);
             }
 
-            run.Status = "Success";
+            run.Status = batch.Warnings.Count > 0 ? "Warning" : "Success";
+            run.ErrorMessage = batch.Warnings.Count == 0
+                ? null
+                : Truncate(string.Join(Environment.NewLine, batch.Warnings), 4000);
             run.RowsCollected = waitSnapshots.Count + batch.Blocking.Count + queryContexts.Count +
                                 batch.Indexes.Count + batch.MissingIndexes.Count + batch.Statistics.Count;
             run.CompletedAt = DateTimeOffset.UtcNow;
@@ -478,6 +481,7 @@ public sealed class TelemetryWorker(
 
     private static string QueryKey(string databaseName, string queryHash) => $"{databaseName}\u001f{queryHash}";
     private static string PlanKey(long queryId, string planHash, string source) => $"{queryId}\u001f{planHash}\u001f{source}";
+    private static string Truncate(string value, int maxLength) => value.Length <= maxLength ? value : value[..maxLength];
 
     private static async Task<Finding> UpsertFindingAsync(
         AdvisorDbContext db,

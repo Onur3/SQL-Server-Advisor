@@ -66,6 +66,9 @@ public sealed class IndexSnapshot
     public bool IsUnique { get; set; }
     public bool IsPrimaryKey { get; set; }
     public bool IsDisabled { get; set; }
+    public bool HasFilter { get; set; }
+    public string? FilterDefinition { get; set; }
+    public int UsageSinceDays { get; set; }
     public decimal? AvgFragmentationPercent { get; set; }
     public long? PageCount { get; set; }
     public DateTimeOffset CapturedAt { get; set; }
@@ -102,6 +105,11 @@ public sealed class StatisticsSnapshot
     public long ModificationCounter { get; set; }
     public DateTime? LastUpdated { get; set; }
     public decimal? SamplePercent { get; set; }
+    public bool AutoCreated { get; set; }
+    public bool UserCreated { get; set; }
+    public bool NoRecompute { get; set; }
+    public bool HasFilter { get; set; }
+    public string? FilterDefinition { get; set; }
     public DateTimeOffset CapturedAt { get; set; }
 }
 

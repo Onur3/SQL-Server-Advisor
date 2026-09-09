@@ -42,22 +42,29 @@ jobs:
         run: npm run build
 
   deployment-script:
-    name: PowerShell installer syntax
+    name: PowerShell deployment syntax
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Parse deploy/install.ps1
+      - name: Parse deploy scripts
         shell: pwsh
         run: |
-          $tokens = $null
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path 'deploy/install.ps1'),
-            [ref]$tokens,
-            [ref]$errors
-          ) | Out-Null
-          if ($errors.Count -gt 0) {
-            $errors | ForEach-Object { Write-Error $_.Message }
-            exit 1
+          $failed = $false
+          Get-ChildItem 'deploy' -Filter '*.ps1' -File | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $failed = $true
+              Write-Host "Syntax errors in $($_.FullName)" -ForegroundColor Red
+              $errors | ForEach-Object { Write-Error $_.Message }
+            }
+            else {
+              Write-Host "$($_.Name) syntax OK"
+            }
           }
-          Write-Host 'deploy/install.ps1 syntax OK'
+          if ($failed) { exit 1 }

@@ -12,6 +12,7 @@ public sealed class TelemetryWorker(
     IEnumerable<IAdvisorCollector> collectors,
     IEnumerable<ITelemetryAnalysisRule> telemetryRules,
     IEnumerable<IQueryAnalysisRule> queryRules,
+    IEnumerable<IIndexAnalysisRule> indexRules,
     IRecommendationFactory recommendationFactory,
     ILogger<TelemetryWorker> logger) : BackgroundService
 {
@@ -96,6 +97,10 @@ public sealed class TelemetryWorker(
                 db.WaitSnapshots.AddRange(waitSnapshots);
             if (batch.Blocking.Count > 0)
                 db.BlockingEvents.AddRange(batch.Blocking);
+            if (batch.Indexes.Count > 0)
+                db.IndexSnapshots.AddRange(batch.Indexes);
+            if (batch.MissingIndexes.Count > 0)
+                db.MissingIndexSnapshots.AddRange(batch.MissingIndexes);
 
             var activeFindings = new List<Finding>();
 
@@ -170,6 +175,40 @@ public sealed class TelemetryWorker(
                     cancellationToken);
             }
 
+            if (collector.Name.Equals("IndexAdvisor", StringComparison.OrdinalIgnoreCase) ||
+                batch.Indexes.Count > 0 || batch.MissingIndexes.Count > 0)
+            {
+                var activeFingerprints = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var ruleIds = indexRules.SelectMany(x => x.RuleIds)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+                foreach (var rule in indexRules)
+                {
+                    var findings = await rule.EvaluateAsync(
+                        server.Id,
+                        capturedAt,
+                        batch.Indexes,
+                        batch.MissingIndexes,
+                        cancellationToken);
+
+                    foreach (var finding in findings)
+                    {
+                        var tracked = await UpsertFindingAsync(db, finding, cancellationToken);
+                        activeFindings.Add(tracked);
+                        activeFingerprints.Add(tracked.Fingerprint);
+                    }
+                }
+
+                await ResolveInactiveFindingsAsync(
+                    db,
+                    server.Id,
+                    ruleIds,
+                    activeFingerprints,
+                    capturedAt,
+                    cancellationToken);
+            }
+
             await db.SaveChangesAsync(cancellationToken);
 
             foreach (var finding in activeFindings.DistinctBy(x => x.Id))
@@ -187,7 +226,7 @@ public sealed class TelemetryWorker(
             }
 
             run.Status = "Success";
-            run.RowsCollected = waitSnapshots.Count + batch.Blocking.Count + queryContexts.Count;
+            run.RowsCollected = waitSnapshots.Count + batch.Blocking.Count + queryContexts.Count + batch.Indexes.Count + batch.MissingIndexes.Count;
             run.CompletedAt = DateTimeOffset.UtcNow;
             run.DurationMs = (long)(run.CompletedAt.Value - run.StartedAt).TotalMilliseconds;
             await db.SaveChangesAsync(cancellationToken);

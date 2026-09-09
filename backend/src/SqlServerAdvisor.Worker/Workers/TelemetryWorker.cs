@@ -13,6 +13,7 @@ public sealed class TelemetryWorker(
     IEnumerable<ITelemetryAnalysisRule> telemetryRules,
     IEnumerable<IQueryAnalysisRule> queryRules,
     IEnumerable<IIndexAnalysisRule> indexRules,
+    IEnumerable<IStatisticsAnalysisRule> statisticsRules,
     IRecommendationFactory recommendationFactory,
     ILogger<TelemetryWorker> logger) : BackgroundService
 {
@@ -101,6 +102,8 @@ public sealed class TelemetryWorker(
                 db.IndexSnapshots.AddRange(batch.Indexes);
             if (batch.MissingIndexes.Count > 0)
                 db.MissingIndexSnapshots.AddRange(batch.MissingIndexes);
+            if (batch.Statistics.Count > 0)
+                db.StatisticsSnapshots.AddRange(batch.Statistics);
 
             var activeFindings = new List<Finding>();
 
@@ -129,13 +132,7 @@ public sealed class TelemetryWorker(
                     }
                 }
 
-                await ResolveInactiveFindingsAsync(
-                    db,
-                    server.Id,
-                    ruleIds,
-                    activeFingerprints,
-                    capturedAt,
-                    cancellationToken);
+                await ResolveInactiveFindingsAsync(db, server.Id, ruleIds, activeFingerprints, capturedAt, cancellationToken);
             }
 
             if (collector.Name.Equals("QueryPerformance", StringComparison.OrdinalIgnoreCase) ||
@@ -166,13 +163,7 @@ public sealed class TelemetryWorker(
                     }
                 }
 
-                await ResolveInactiveFindingsAsync(
-                    db,
-                    server.Id,
-                    ruleIds,
-                    activeFingerprints,
-                    capturedAt,
-                    cancellationToken);
+                await ResolveInactiveFindingsAsync(db, server.Id, ruleIds, activeFingerprints, capturedAt, cancellationToken);
             }
 
             if (collector.Name.Equals("IndexAdvisor", StringComparison.OrdinalIgnoreCase) ||
@@ -200,13 +191,34 @@ public sealed class TelemetryWorker(
                     }
                 }
 
-                await ResolveInactiveFindingsAsync(
-                    db,
-                    server.Id,
-                    ruleIds,
-                    activeFingerprints,
-                    capturedAt,
-                    cancellationToken);
+                await ResolveInactiveFindingsAsync(db, server.Id, ruleIds, activeFingerprints, capturedAt, cancellationToken);
+            }
+
+            if (collector.Name.Equals("StatisticsAdvisor", StringComparison.OrdinalIgnoreCase) ||
+                batch.Statistics.Count > 0)
+            {
+                var activeFingerprints = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var ruleIds = statisticsRules.SelectMany(x => x.RuleIds)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+                foreach (var rule in statisticsRules)
+                {
+                    var findings = await rule.EvaluateAsync(
+                        server.Id,
+                        capturedAt,
+                        batch.Statistics,
+                        cancellationToken);
+
+                    foreach (var finding in findings)
+                    {
+                        var tracked = await UpsertFindingAsync(db, finding, cancellationToken);
+                        activeFindings.Add(tracked);
+                        activeFingerprints.Add(tracked.Fingerprint);
+                    }
+                }
+
+                await ResolveInactiveFindingsAsync(db, server.Id, ruleIds, activeFingerprints, capturedAt, cancellationToken);
             }
 
             await db.SaveChangesAsync(cancellationToken);
@@ -226,7 +238,8 @@ public sealed class TelemetryWorker(
             }
 
             run.Status = "Success";
-            run.RowsCollected = waitSnapshots.Count + batch.Blocking.Count + queryContexts.Count + batch.Indexes.Count + batch.MissingIndexes.Count;
+            run.RowsCollected = waitSnapshots.Count + batch.Blocking.Count + queryContexts.Count +
+                                batch.Indexes.Count + batch.MissingIndexes.Count + batch.Statistics.Count;
             run.CompletedAt = DateTimeOffset.UtcNow;
             run.DurationMs = (long)(run.CompletedAt.Value - run.StartedAt).TotalMilliseconds;
             await db.SaveChangesAsync(cancellationToken);

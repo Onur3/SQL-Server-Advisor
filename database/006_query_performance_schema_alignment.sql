@@ -16,20 +16,35 @@ AND EXISTS
       AND c.name = N'QueryHash'
       AND t.name IN (N'binary', N'varbinary')
 )
+AND COL_LENGTH(N'QRY.Query', N'QueryHashText') IS NULL
 BEGIN
-    IF COL_LENGTH(N'QRY.Query', N'QueryHashText') IS NULL
-        ALTER TABLE QRY.Query ADD QueryHashText nvarchar(128) NULL;
+    ALTER TABLE QRY.Query ADD QueryHashText nvarchar(128) NULL;
+END
+GO
 
-    UPDATE QRY.Query
-    SET QueryHashText = COALESCE(CONVERT(varchar(130), QueryHash, 1), CONCAT(N'legacy-', Id))
-    WHERE QueryHashText IS NULL;
+IF OBJECT_ID(N'QRY.Query', N'U') IS NOT NULL
+AND COL_LENGTH(N'QRY.Query', N'QueryHashText') IS NOT NULL
+AND EXISTS
+(
+    SELECT 1
+    FROM sys.columns c
+    JOIN sys.types t ON t.user_type_id = c.user_type_id
+    WHERE c.object_id = OBJECT_ID(N'QRY.Query')
+      AND c.name = N'QueryHash'
+      AND t.name IN (N'binary', N'varbinary')
+)
+BEGIN
+    EXEC sys.sp_executesql N'
+        UPDATE QRY.Query
+        SET QueryHashText = COALESCE(CONVERT(varchar(130), QueryHash, 1), CONCAT(N''legacy-'', Id))
+        WHERE QueryHashText IS NULL;';
 
     IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'QRY.Query') AND name = N'IX_QRY_Query_ServerDatabaseHash')
         DROP INDEX IX_QRY_Query_ServerDatabaseHash ON QRY.Query;
 
-    ALTER TABLE QRY.Query DROP COLUMN QueryHash;
+    EXEC sys.sp_executesql N'ALTER TABLE QRY.Query DROP COLUMN QueryHash;';
     EXEC sys.sp_rename N'QRY.Query.QueryHashText', N'QueryHash', N'COLUMN';
-    ALTER TABLE QRY.Query ALTER COLUMN QueryHash nvarchar(128) NOT NULL;
+    EXEC sys.sp_executesql N'ALTER TABLE QRY.Query ALTER COLUMN QueryHash nvarchar(128) NOT NULL;';
 END
 GO
 
@@ -43,17 +58,32 @@ AND EXISTS
       AND c.name = N'NormalizedHash'
       AND t.name IN (N'binary', N'varbinary')
 )
+AND COL_LENGTH(N'QRY.Query', N'NormalizedHashText') IS NULL
 BEGIN
-    IF COL_LENGTH(N'QRY.Query', N'NormalizedHashText') IS NULL
-        ALTER TABLE QRY.Query ADD NormalizedHashText nvarchar(128) NULL;
+    ALTER TABLE QRY.Query ADD NormalizedHashText nvarchar(128) NULL;
+END
+GO
 
-    UPDATE QRY.Query
-    SET NormalizedHashText = COALESCE(CONVERT(varchar(130), NormalizedHash, 1), QueryHash)
-    WHERE NormalizedHashText IS NULL;
+IF OBJECT_ID(N'QRY.Query', N'U') IS NOT NULL
+AND COL_LENGTH(N'QRY.Query', N'NormalizedHashText') IS NOT NULL
+AND EXISTS
+(
+    SELECT 1
+    FROM sys.columns c
+    JOIN sys.types t ON t.user_type_id = c.user_type_id
+    WHERE c.object_id = OBJECT_ID(N'QRY.Query')
+      AND c.name = N'NormalizedHash'
+      AND t.name IN (N'binary', N'varbinary')
+)
+BEGIN
+    EXEC sys.sp_executesql N'
+        UPDATE QRY.Query
+        SET NormalizedHashText = COALESCE(CONVERT(varchar(130), NormalizedHash, 1), QueryHash)
+        WHERE NormalizedHashText IS NULL;';
 
-    ALTER TABLE QRY.Query DROP COLUMN NormalizedHash;
+    EXEC sys.sp_executesql N'ALTER TABLE QRY.Query DROP COLUMN NormalizedHash;';
     EXEC sys.sp_rename N'QRY.Query.NormalizedHashText', N'NormalizedHash', N'COLUMN';
-    ALTER TABLE QRY.Query ALTER COLUMN NormalizedHash nvarchar(128) NOT NULL;
+    EXEC sys.sp_executesql N'ALTER TABLE QRY.Query ALTER COLUMN NormalizedHash nvarchar(128) NOT NULL;';
 END
 GO
 

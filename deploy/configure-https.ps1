@@ -1,12 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$SiteName = 'SQLServerAdvisor',
-    [Parameter(Mandatory=$true)][string]$HostName,
-    [int]$HttpsPort = 443,
-    [string]$CertificateThumbprint = '',
-    [string]$PfxPath = '',
-    [SecureString]$PfxPassword,
-    [switch]$RemoveHttpBinding
+    [string]$SettingsPath = (Join-Path $PSScriptRoot 'install.settings.json')
 )
 
 Set-StrictMode -Version Latest
@@ -16,148 +10,125 @@ function Assert-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw 'Bu script Administrator olarak calistirilmalidir.'
+        throw 'This script must be run from an elevated PowerShell session.'
     }
 }
 
 function Get-CertificateDnsNames([System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate) {
     $names = @()
-    try {
-        $names += @($Certificate.DnsNameList | ForEach-Object { $_.Unicode })
-    }
-    catch { }
-
-    if ($names.Count -eq 0 -and $Certificate.Subject -match '(?:^|,\s*)CN=([^,]+)') {
-        $names += $Matches[1].Trim()
-    }
-
+    try { $names += @($Certificate.DnsNameList | ForEach-Object { $_.Unicode }) } catch { }
+    if ($names.Count -eq 0 -and $Certificate.Subject -match '(?:^|,\s*)CN=([^,]+)') { $names += $Matches[1].Trim() }
     return @($names | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
 }
 
 function Test-DnsNameMatch([string]$Pattern, [string]$DnsName) {
-    if ([string]::Equals($Pattern, $DnsName, [StringComparison]::OrdinalIgnoreCase)) {
-        return $true
-    }
-
+    if ([string]::Equals($Pattern, $DnsName, [StringComparison]::OrdinalIgnoreCase)) { return $true }
     if ($Pattern.StartsWith('*.')) {
         $suffix = $Pattern.Substring(1)
-        if (-not $DnsName.EndsWith($suffix, [StringComparison]::OrdinalIgnoreCase)) {
-            return $false
-        }
-
+        if (-not $DnsName.EndsWith($suffix, [StringComparison]::OrdinalIgnoreCase)) { return $false }
         $left = $DnsName.Substring(0, $DnsName.Length - $suffix.Length)
         return (-not [string]::IsNullOrWhiteSpace($left)) -and (-not $left.Contains('.'))
     }
-
     return $false
 }
 
 function Resolve-Certificate {
-    if (-not [string]::IsNullOrWhiteSpace($PfxPath)) {
-        $resolvedPfx = [IO.Path]::GetFullPath($PfxPath)
-        if (-not (Test-Path $resolvedPfx)) {
-            throw "PFX dosyasi bulunamadi: $resolvedPfx"
-        }
-
-        if ($null -eq $PfxPassword) {
-            $script:PfxPassword = Read-Host 'PFX parolasini girin' -AsSecureString
-        }
-
-        $imported = Import-PfxCertificate -FilePath $resolvedPfx -CertStoreLocation 'Cert:\LocalMachine\My' -Password $PfxPassword -Exportable:$false
-        if ($null -eq $imported) {
-            throw 'PFX sertifikasi LocalMachine\\My store icine import edilemedi.'
-        }
-        $script:CertificateThumbprint = $imported.Thumbprint
+    $storePath = "Cert:\$StoreLocation\$StoreName"
+    if ($Mode -eq 'pfx') {
+        $path = $PfxPath
+        if (-not [IO.Path]::IsPathRooted($path)) { $path = Join-Path $SettingsDirectory $path }
+        $path = [IO.Path]::GetFullPath($path)
+        if (-not (Test-Path $path)) { throw "PFX file not found: $path" }
+        $plain = [Environment]::GetEnvironmentVariable($PfxPasswordEnvironmentVariable)
+        if ($null -eq $plain) { throw "PFX password environment variable '$PfxPasswordEnvironmentVariable' is not set." }
+        $secure = ConvertTo-SecureString $plain -AsPlainText -Force
+        return Import-PfxCertificate -FilePath $path -CertStoreLocation $storePath -Password $secure -Exportable:$false
     }
 
-    if (-not [string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
-        $normalized = $CertificateThumbprint.Replace(' ', '').ToUpperInvariant()
-        $cert = Get-ChildItem 'Cert:\LocalMachine\My' | Where-Object { $_.Thumbprint -eq $normalized } | Select-Object -First 1
-        if ($null -eq $cert) {
-            throw "CertificateThumbprint LocalMachine\\My store icinde bulunamadi: $normalized"
-        }
-        if (-not $cert.HasPrivateKey) { throw 'Secilen sertifikanin private key bilgisi yok.' }
-        if ($cert.NotAfter -le (Get-Date)) { throw "Secilen sertifika suresi dolmus: $($cert.NotAfter)" }
+    if ($Mode -eq 'thumbprint') {
+        $normalized = $Thumbprint.Replace(' ', '').ToUpperInvariant()
+        $cert = Get-ChildItem $storePath | Where-Object { $_.Thumbprint -eq $normalized } | Select-Object -First 1
+        if ($null -eq $cert) { throw "Certificate not found: $normalized" }
         return $cert
     }
 
-    $matches = Get-ChildItem 'Cert:\LocalMachine\My' |
+    $candidates = @()
+    Get-ChildItem $storePath |
         Where-Object { $_.HasPrivateKey -and $_.NotAfter -gt (Get-Date) } |
         ForEach-Object {
             $cert = $_
-            $matched = $false
             foreach ($name in (Get-CertificateDnsNames $cert)) {
                 if (Test-DnsNameMatch -Pattern $name -DnsName $HostName) {
-                    $matched = $true
+                    $priority = if ([string]::Equals($name, $HostName, [StringComparison]::OrdinalIgnoreCase)) { 2 } else { 1 }
+                    $candidates += [pscustomobject]@{ Certificate = $cert; Priority = $priority }
                     break
                 }
             }
-            if ($matched) { $cert }
-        } |
-        Sort-Object NotAfter -Descending
-
-    $selected = @($matches) | Select-Object -First 1
-    if ($null -eq $selected) {
-        throw "'$HostName' veya uygun wildcard icin LocalMachine\\My store icinde private-key sahibi gecerli sertifika bulunamadi. -CertificateThumbprint veya -PfxPath kullanin."
-    }
-
-    return $selected
+        }
+    $selected = $candidates | Sort-Object Priority -Descending, @{Expression={$_.Certificate.NotAfter};Descending=$true} | Select-Object -First 1
+    if ($null -eq $selected) { throw "No valid certificate matching '$HostName' was found in $storePath." }
+    return $selected.Certificate
 }
 
 Assert-Administrator
-Import-Module WebAdministration
+$SettingsPath = [IO.Path]::GetFullPath($SettingsPath)
+if (-not (Test-Path $SettingsPath)) { throw "Settings file not found: $SettingsPath" }
+$SettingsDirectory = Split-Path -Parent $SettingsPath
+$settings = Get-Content -Raw -Path $SettingsPath | ConvertFrom-Json
 
-$site = Get-Website -Name $SiteName -ErrorAction SilentlyContinue
-if ($null -eq $site) {
-    throw "IIS site bulunamadi: $SiteName. Once deploy\\install.ps1 calistirin."
+$SiteName = [string]$settings.installation.siteName
+$HostName = [string]$settings.web.hostName
+$HttpsPort = [int]$settings.web.httpsPort
+$KeepHttpBinding = [bool]$settings.web.keepHttpBinding
+$OpenFirewall = [bool]$settings.web.openFirewall
+$Mode = ([string]$settings.certificate.mode).ToLowerInvariant()
+$Thumbprint = [string]$settings.certificate.thumbprint
+$PfxPath = [string]$settings.certificate.pfxPath
+$PfxPasswordEnvironmentVariable = [string]$settings.certificate.pfxPasswordEnvironmentVariable
+$StoreLocation = [string]$settings.certificate.storeLocation
+$StoreName = [string]$settings.certificate.storeName
+
+if (([string]$settings.web.protocol).ToLowerInvariant() -ne 'https') {
+    throw 'web.protocol is not https. Change deploy/install.settings.json before configuring HTTPS.'
 }
+if ($Mode -notin @('auto','thumbprint','pfx')) { throw 'certificate.mode must be auto, thumbprint or pfx.' }
+
+Import-Module WebAdministration
+$site = Get-Website -Name $SiteName -ErrorAction SilentlyContinue
+if ($null -eq $site) { throw "IIS site not found: $SiteName" }
 
 $certificate = Resolve-Certificate
-Write-Host "Sertifika : $($certificate.Subject)" -ForegroundColor Cyan
-Write-Host "Thumbprint: $($certificate.Thumbprint)"
-Write-Host "Gecerlilik: $($certificate.NotBefore) - $($certificate.NotAfter)"
+if ($null -eq $certificate -or -not $certificate.HasPrivateKey) { throw 'Resolved certificate is invalid or does not contain a private key.' }
+if ($certificate.NotAfter -le (Get-Date)) { throw 'Resolved certificate is expired.' }
 
-Get-WebBinding -Name $SiteName -Protocol 'https' -ErrorAction SilentlyContinue |
-    Where-Object { $_.bindingInformation -eq "*:${HttpsPort}:$HostName" } |
-    ForEach-Object {
-        Remove-WebBinding -Name $SiteName -Protocol 'https' -BindingInformation $_.bindingInformation
-    }
-
+Get-WebBinding -Name $SiteName -Protocol 'https' -ErrorAction SilentlyContinue | ForEach-Object {
+    Remove-WebBinding -Name $SiteName -Protocol 'https' -BindingInformation $_.bindingInformation
+}
 New-WebBinding -Name $SiteName -Protocol 'https' -Port $HttpsPort -HostHeader $HostName -SslFlags 1 | Out-Null
 $binding = Get-WebBinding -Name $SiteName -Protocol 'https' |
     Where-Object { $_.bindingInformation -eq "*:${HttpsPort}:$HostName" } |
     Select-Object -First 1
+if ($null -eq $binding) { throw 'HTTPS IIS binding could not be created.' }
+$binding.AddSslCertificate($certificate.Thumbprint, $StoreName)
 
-if ($null -eq $binding) {
-    throw 'HTTPS IIS binding olusturulamadi.'
+if (-not $KeepHttpBinding) {
+    Get-WebBinding -Name $SiteName -Protocol 'http' -ErrorAction SilentlyContinue | ForEach-Object {
+        Remove-WebBinding -Name $SiteName -Protocol 'http' -BindingInformation $_.bindingInformation
+    }
 }
 
-$binding.AddSslCertificate($certificate.Thumbprint, 'My')
-
-$firewallRuleName = "SQL Server Advisor HTTPS $HttpsPort"
-$firewallRule = Get-NetFirewallRule -DisplayName $firewallRuleName -ErrorAction SilentlyContinue
-if ($null -eq $firewallRule) {
-    New-NetFirewallRule -DisplayName $firewallRuleName -Direction Inbound -Action Allow -Protocol TCP -LocalPort $HttpsPort -Profile Any | Out-Null
-}
-else {
-    Enable-NetFirewallRule -DisplayName $firewallRuleName | Out-Null
-}
-
-if ($RemoveHttpBinding) {
-    Get-WebBinding -Name $SiteName -Protocol 'http' -ErrorAction SilentlyContinue |
-        ForEach-Object {
-            Remove-WebBinding -Name $SiteName -Protocol 'http' -BindingInformation $_.bindingInformation
-        }
+if ($OpenFirewall) {
+    $ruleName = "SQL Server Advisor HTTPS $HttpsPort"
+    if (-not (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue)) {
+        New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Action Allow -Protocol TCP -LocalPort $HttpsPort -Profile Any | Out-Null
+    }
+    else { Enable-NetFirewallRule -DisplayName $ruleName | Out-Null }
 }
 
 Restart-WebAppPool -Name $site.applicationPool -ErrorAction SilentlyContinue
 Start-Website -Name $SiteName -ErrorAction SilentlyContinue
 
-Write-Host "`nHTTPS binding tamamlandi." -ForegroundColor Green
+Write-Host "HTTPS binding updated from settings." -ForegroundColor Green
 Write-Host "URL        : https://${HostName}:$HttpsPort"
-Write-Host "IIS Site   : $SiteName"
 Write-Host "Certificate: $($certificate.Thumbprint)"
-Write-Host "Firewall   : TCP $HttpsPort inbound acik"
-if ($RemoveHttpBinding) {
-    Write-Host 'HTTP binding : kaldirildi'
-}
+Write-Host "Settings   : $SettingsPath"

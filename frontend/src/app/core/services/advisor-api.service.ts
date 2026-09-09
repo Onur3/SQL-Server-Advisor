@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { ConnectionTestResult, CreateServerRequest, DashboardServer, ServerListItem, WorkerStatus } from '../models/server.models';
 import { FindingListItem, RecommendationListItem } from '../models/analysis.models';
+import { BlockingTelemetry, WaitTelemetry } from '../models/telemetry.models';
 
 @Injectable({ providedIn: 'root' })
 export class AdvisorApiService {
@@ -39,5 +40,17 @@ export class AdvisorApiService {
 
   getRecommendations(status = 'All'): Observable<RecommendationListItem[]> {
     return this.http.get<RecommendationListItem[]>(`${this.baseUrl}/recommendations`, { params: { status } });
+  }
+
+  getWaitTelemetry(minutes = 15, take = 100): Observable<WaitTelemetry[]> {
+    return this.http.get<WaitTelemetry[]>(`${this.baseUrl}/telemetry/waits`, {
+      params: { minutes, take }
+    });
+  }
+
+  getBlockingTelemetry(minutes = 15, take = 100): Observable<BlockingTelemetry[]> {
+    return this.http.get<BlockingTelemetry[]>(`${this.baseUrl}/telemetry/blocking`, {
+      params: { minutes, take }
+    });
   }
 }

@@ -34,7 +34,12 @@ public sealed class StatisticsAdvisorCollector(IMonitoredConnectionStringFactory
             sp.last_updated AS LastUpdated,
             CAST(CASE WHEN ISNULL(sp.rows, 0) = 0 THEN NULL
                       ELSE sp.rows_sampled * 100.0 / NULLIF(sp.rows, 0)
-                 END AS decimal(9,3)) AS SamplePercent
+                 END AS decimal(9,3)) AS SamplePercent,
+            s.auto_created AS AutoCreated,
+            s.user_created AS UserCreated,
+            s.no_recompute AS NoRecompute,
+            s.has_filter AS HasFilter,
+            s.filter_definition AS FilterDefinition
         FROM sys.stats s
         JOIN sys.tables t ON t.object_id = s.object_id
         OUTER APPLY sys.dm_db_stats_properties(s.object_id, s.stats_id) sp

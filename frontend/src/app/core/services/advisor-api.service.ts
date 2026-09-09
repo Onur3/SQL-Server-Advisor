@@ -62,8 +62,8 @@ export class AdvisorApiService {
     return this.http.get<QueryPerformance[]>(`${this.baseUrl}/queries`, { params: { take } });
   }
 
-  getQueryPlan(queryId: number): Observable<QueryPlan> {
-    return this.http.get<QueryPlan>(`${this.baseUrl}/queries/${queryId}/plan`);
+  getQueryPlan(planId: number): Observable<QueryPlan> {
+    return this.http.get<QueryPlan>(`${this.baseUrl}/queries/plans/${planId}`);
   }
 
   getFragmentedIndexes(take = 100): Observable<FragmentedIndex[]> {

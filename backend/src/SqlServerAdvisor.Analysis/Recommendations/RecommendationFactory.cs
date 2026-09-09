@@ -10,8 +10,10 @@ public sealed class RecommendationFactory : IRecommendationFactory
         var recommendation = finding.RuleId switch
         {
             "BLK-001" => CreateBlockingRecommendation(finding),
+            "BLK-002" => CreateBlockingRecommendation(finding),
             "CPU-001" => CreateCpuRecommendation(finding),
             "MEM-001" => CreateMemoryRecommendation(finding),
+            "WAIT-001" => CreateWaitRecommendation(finding),
             _ => null
         };
 
@@ -60,6 +62,19 @@ public sealed class RecommendationFactory : IRecommendationFactory
         ConfidenceScore = finding.ConfidenceScore,
         RecommendedAction = "Mevcut max server memory ayarını, işletim sistemi kullanılabilir belleğini ve SQL Server process memory durumunu inceleyin. Ayar değişikliği gerekiyorsa kapasite değerlendirmesi ve DBA onayı sonrasında uygulayın.",
         ScriptText = "SELECT name, value_in_use FROM sys.configurations WHERE name IN ('max server memory (MB)','min server memory (MB)'); SELECT total_physical_memory_kb/1024 AS total_physical_memory_mb, available_physical_memory_kb/1024 AS available_physical_memory_mb, system_memory_state_desc FROM sys.dm_os_sys_memory; SELECT physical_memory_in_use_kb/1024 AS sql_physical_memory_mb, process_physical_memory_low, process_virtual_memory_low FROM sys.dm_os_process_memory;",
+        Status = "New"
+    };
+
+    private static Recommendation CreateWaitRecommendation(Finding finding) => new()
+    {
+        PriorityScore = finding.FindingScore,
+        Title = "Baskın wait türünün kaynağını korelasyonla inceleyin",
+        Explanation = "Wait stats bir semptomdur; doğrudan ayar değişikliği gerekçesi değildir. Wait türü, aynı zaman aralığındaki sorgu yükü, I/O, blocking, memory grant ve CPU verileriyle birlikte değerlendirilmelidir.",
+        ExpectedBenefit = "Medium",
+        RiskLevel = "Low",
+        ConfidenceScore = finding.ConfidenceScore,
+        RecommendedAction = "Önce son örnekleme aralığındaki wait artışını doğrulayın. Ardından ilgili kaynak grubuna göre sorguları, dosya I/O gecikmesini, blocking zincirlerini veya memory grant durumunu inceleyin. SQL Server Advisor üretim ayarı veya indeks değişikliğini otomatik uygulamaz.",
+        ScriptText = "SELECT TOP (30) wait_type, waiting_tasks_count, wait_time_ms, signal_wait_time_ms, wait_time_ms - signal_wait_time_ms AS resource_wait_ms FROM sys.dm_os_wait_stats WHERE wait_time_ms > 0 ORDER BY wait_time_ms DESC;",
         Status = "New"
     };
 }

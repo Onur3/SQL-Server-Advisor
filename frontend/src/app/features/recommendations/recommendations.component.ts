@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -9,6 +9,8 @@ import { timer, switchMap } from 'rxjs';
 import { RecommendationListItem } from '../../core/models/analysis.models';
 import { AdvisorApiService } from '../../core/services/advisor-api.service';
 
+type RecommendationFilter = 'New' | 'All' | 'Resolved';
+
 @Component({
   selector: 'app-recommendations',
   standalone: true,
@@ -17,55 +19,97 @@ import { AdvisorApiService } from '../../core/services/advisor-api.service';
     <div class="heading">
       <div>
         <h1 class="page-title">Öneriler</h1>
-        <p class="page-subtitle">Bulgulara göre oluşturulan DBA inceleme ve iyileştirme önerileri.</p>
+        <p class="page-subtitle">Her önerinin hangi bulguya, hangi nesneye ve hangi riske karşı üretildiğini görün.</p>
       </div>
-      <div class="guard"><mat-icon>verified_user</mat-icon> Otomatik SQL çalıştırılmaz</div>
+      <div class="guard"><mat-icon>verified_user</mat-icon><div><strong>DBA kontrollü</strong><small>Advisor otomatik SQL çalıştırmaz.</small></div></div>
+    </div>
+
+    <div class="toolbar panel">
+      <div class="filter-group">
+        <button type="button" [class.active]="statusFilter() === 'New'" (click)="statusFilter.set('New')">Aktif</button>
+        <button type="button" [class.active]="statusFilter() === 'All'" (click)="statusFilter.set('All')">Tümü</button>
+        <button type="button" [class.active]="statusFilter() === 'Resolved'" (click)="statusFilter.set('Resolved')">Çözülen</button>
+      </div>
+      <div class="summary"><span><strong>{{ activeCount() }}</strong> aktif</span><span><strong>{{ highPriorityCount() }}</strong> yüksek öncelik</span></div>
     </div>
 
     @if (loading()) {
       <div class="loading"><mat-spinner diameter="38" /></div>
-    } @else if (!recommendations().length) {
-      <div class="empty">
+    } @else if (!visibleRecommendations().length) {
+      <div class="empty panel">
         <mat-icon>tips_and_updates</mat-icon>
-        <h3>Henüz öneri yok</h3>
-        <p>Aktif bir performans bulgusu oluştuğunda güvenli inceleme önerileri burada üretilecek.</p>
+        <h3>{{ statusFilter() === 'New' ? 'Aktif öneri yok' : 'Bu filtrede kayıt yok' }}</h3>
+        <p>Bir bulgu aksiyon gerektirdiğinde kaynak problemi ve hedefiyle birlikte burada gösterilir.</p>
       </div>
     } @else {
       <div class="list">
-        @for (item of recommendations(); track item.id) {
+        @for (item of visibleRecommendations(); track item.id) {
           <mat-card class="recommendation" [class.resolved]="item.status === 'Resolved'">
             <mat-card-content>
-              <div class="top">
-                <div>
-                  <div class="meta">
-                    <span class="severity s{{ item.severity }}">{{ severityText(item.severity) }}</span>
-                    <span>{{ item.serverName }}</span>
-                    <span>{{ item.ruleId }}</span>
-                    <span>{{ item.status }}</span>
+              <div class="card-head">
+                <div class="identity">
+                  <div class="icon-wrap s{{ item.severity }}"><mat-icon>{{ item.icon }}</mat-icon></div>
+                  <div>
+                    <div class="eyebrow">
+                      <span class="severity s{{ item.severity }}">{{ severityText(item.severity) }}</span>
+                      <span>{{ item.categoryLabel }}</span>
+                      <span>{{ item.ruleName }}</span>
+                    </div>
+                    <h2>{{ item.title }}</h2>
+                    <div class="scope"><mat-icon>my_location</mat-icon>{{ item.scopeText }}</div>
                   </div>
-                  <h3>{{ item.title }}</h3>
-                  <div class="finding-title">Kaynak bulgu: {{ item.findingTitle }}</div>
                 </div>
-                <div class="score"><strong>{{ item.priorityScore | number:'1.0-0' }}</strong><small>ÖNCELİK</small></div>
+                <div class="priority"><strong>{{ item.priorityScore | number:'1.0-0' }}</strong><small>ÖNCELİK</small></div>
               </div>
 
-              <p>{{ item.explanation }}</p>
-              <div class="action"><strong>Önerilen aksiyon</strong><span>{{ item.recommendedAction }}</span></div>
+              <section class="source-box">
+                <div class="source-title"><mat-icon>link</mat-icon>Bu öneri hangi probleme ait?</div>
+                <strong>{{ item.findingTitle }}</strong>
+                <p>{{ item.whatWasFound }}</p>
+                <div class="source-meta">
+                  <span>Sunucu <b>{{ item.serverName }}</b></span>
+                  <span>Veritabanı <b>{{ item.databaseName || 'Sunucu geneli' }}</b></span>
+                  <span>Nesne <b>{{ item.objectName || 'Genel' }}</b></span>
+                  <span>Bulgu #<b>{{ item.findingId }}</b></span>
+                </div>
+              </section>
 
-              <div class="tags">
-                <span>Beklenen fayda: <strong>{{ item.expectedBenefit }}</strong></span>
-                <span>Risk: <strong>{{ item.riskLevel }}</strong></span>
-                <span>Güven: <strong>%{{ item.confidenceScore | number:'1.0-0' }}</strong></span>
-                <span>CanExecute: <strong>{{ item.canExecute ? 'true' : 'false' }}</strong></span>
+              <div class="recommend-grid">
+                <section class="answer action">
+                  <div class="answer-title"><mat-icon>task_alt</mat-icon>Önerilen aksiyon</div>
+                  <p>{{ item.recommendedAction }}</p>
+                </section>
+                <section class="answer">
+                  <div class="answer-title"><mat-icon>psychology_alt</mat-icon>Neden bu aksiyon?</div>
+                  <p>{{ item.explanation }}</p>
+                </section>
+                <section class="answer">
+                  <div class="answer-title"><mat-icon>warning_amber</mat-icon>Problem neden önemli?</div>
+                  <p>{{ item.whyItMatters }}</p>
+                </section>
               </div>
+
+              <div class="decision-bar">
+                <div><span>Beklenen fayda</span><strong>{{ benefitText(item.expectedBenefit) }}</strong></div>
+                <div><span>Risk</span><strong>{{ riskText(item.riskLevel) }}</strong></div>
+                <div><span>Güven</span><strong>%{{ item.confidenceScore | number:'1.0-0' }}</strong></div>
+                <div><span>Uygulama</span><strong class="safe">DBA onayı gerekli</strong></div>
+                <div><span>Durum</span><strong>{{ statusText(item.status) }}</strong></div>
+              </div>
+
+              <details class="evidence">
+                <summary><mat-icon>science</mat-icon> Kaynak bulgunun teknik kanıtı</summary>
+                <p>{{ item.findingTechnicalDescription }}</p>
+              </details>
 
               @if (item.scriptText) {
-                <details>
-                  <summary>Salt-okunur tanı sorgusu</summary>
+                <details class="script-box">
+                  <summary><mat-icon>terminal</mat-icon> Salt-okunur tanı sorgusu</summary>
                   <div class="script-head">
-                    <span>DBA incelemesi için</span>
-                    <button mat-stroked-button type="button" (click)="copyScript(item.scriptText)">
-                      <mat-icon>content_copy</mat-icon> Kopyala
+                    <span>Bu sorgu yalnız teşhis amacıyla verilir.</span>
+                    <button mat-stroked-button type="button" (click)="copyScript(item.id, item.scriptText)">
+                      <mat-icon>{{ copiedId() === item.id ? 'check' : 'content_copy' }}</mat-icon>
+                      {{ copiedId() === item.id ? 'Kopyalandı' : 'Kopyala' }}
                     </button>
                   </div>
                   <pre>{{ item.scriptText }}</pre>
@@ -78,7 +122,17 @@ import { AdvisorApiService } from '../../core/services/advisor-api.service';
     }
   `,
   styles: [`
-    .heading{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:18px}.guard{display:flex;align-items:center;gap:7px;background:#eaf7f0;color:#137348;border:1px solid #c6ead7;border-radius:10px;padding:9px 12px;font-size:.76rem;font-weight:700}.guard mat-icon{font-size:18px;width:18px;height:18px}.loading{height:220px;display:grid;place-items:center}.empty{min-height:260px;display:grid;place-items:center;text-align:center;background:#fff;border:1px solid #e3e7ef;border-radius:14px;padding:40px}.empty mat-icon{font-size:42px;width:42px;height:42px;color:#b17900}.empty h3,.empty p{margin:0}.empty p{color:#718096}.list{display:grid;gap:14px}.recommendation{border:1px solid #e3e7ef;border-radius:14px;box-shadow:0 3px 18px rgba(20,32,55,.04)}.recommendation.resolved{opacity:.67}.top{display:flex;justify-content:space-between;gap:18px}.top h3{margin:8px 0 4px;font-size:1.05rem}.finding-title{font-size:.74rem;color:#758196}.meta{display:flex;gap:7px;flex-wrap:wrap;color:#6b778c;font-size:.72rem}.meta span{background:#f4f6f9;border-radius:6px;padding:4px 7px}.meta .severity{font-weight:750}.severity.s4{background:#fee2e2;color:#a91d1d}.severity.s3{background:#ffedd5;color:#a64b00}.severity.s2{background:#fef3c7;color:#8a6300}.severity.s1{background:#e0f2fe;color:#075985}.severity.s0{background:#e9eef5;color:#475569}.score{min-width:68px;text-align:center;background:#f5f7fb;border-radius:10px;padding:8px}.score strong{display:block;font-size:1.2rem}.score small{font-size:.58rem;color:#7b8799;letter-spacing:.08em}.recommendation p{line-height:1.55;color:#4e5a6d}.action{display:grid;gap:4px;background:#f8fafc;border-left:3px solid #3157d5;border-radius:6px;padding:11px 13px;color:#425066;font-size:.82rem}.action strong{color:#26354e}.tags{display:flex;flex-wrap:wrap;gap:14px;margin-top:13px;font-size:.72rem;color:#7a8597}.tags strong{color:#344054}details{margin-top:14px;border-top:1px solid #edf0f5;padding-top:12px}summary{cursor:pointer;font-weight:650;color:#344054}.script-head{display:flex;justify-content:space-between;align-items:center;margin:10px 0 6px;font-size:.72rem;color:#758196}pre{white-space:pre-wrap;word-break:break-word;background:#111827;color:#d7e0ef;border-radius:9px;padding:14px;max-height:320px;overflow:auto;font-size:.74rem;line-height:1.45}@media(max-width:700px){.heading{display:block}.guard{margin-top:12px;width:max-content}.top{display:block}.score{margin-top:10px;width:60px}.script-head{align-items:flex-start;gap:10px}}
+    .heading{display:flex;justify-content:space-between;gap:22px;align-items:flex-start;margin-bottom:18px}.guard{display:flex;align-items:center;gap:9px;background:#eaf8f1;color:#116c47;border:1px solid #c9ead9;border-radius:12px;padding:9px 12px}.guard mat-icon{font-size:20px;width:20px;height:20px}.guard strong,.guard small{display:block}.guard strong{font-size:.74rem}.guard small{font-size:.64rem;margin-top:2px;color:#4d8b70}
+    .toolbar{display:flex;justify-content:space-between;align-items:center;padding:9px 11px;margin-bottom:16px}.filter-group{display:flex;gap:5px}.filter-group button{border:0;background:transparent;border-radius:8px;padding:8px 12px;color:#68768b;font-size:.76rem;font-weight:700;cursor:pointer}.filter-group button.active{background:#e9eefc;color:#2948b5}.summary{display:flex;gap:8px}.summary span{font-size:.7rem;color:#7d899c;background:#f6f8fb;border-radius:8px;padding:7px 9px}.summary strong{color:#344054;margin-right:3px}
+    .loading{height:230px;display:grid;place-items:center}.empty{min-height:270px;display:grid;place-items:center;text-align:center;padding:40px}.empty mat-icon{font-size:46px;width:46px;height:46px;color:#b17a00}.empty h3,.empty p{margin:0}.empty p{max-width:600px;color:#718096}
+    .list{display:grid;gap:16px}.recommendation{border:1px solid #e0e6ef;border-radius:16px;box-shadow:0 8px 28px rgba(15,23,42,.05);overflow:hidden}.recommendation.resolved{opacity:.69}.recommendation mat-card-content{padding:20px 22px 18px}
+    .card-head{display:flex;justify-content:space-between;gap:18px}.identity{display:flex;gap:13px;min-width:0}.icon-wrap{width:42px;height:42px;flex:0 0 42px;border-radius:11px;display:grid;place-items:center;background:#eef2f7;color:#536174}.icon-wrap.s3{background:#fff0df;color:#b45e12}.icon-wrap.s4{background:#ffe8e5;color:#b52e2a}.icon-wrap mat-icon{font-size:21px;width:21px;height:21px}.eyebrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;color:#748196;font-size:.68rem}.eyebrow span{background:#f3f6f9;border-radius:999px;padding:4px 7px}.eyebrow .severity{font-weight:800}.severity.s4{background:#fee2e2;color:#a91d1d}.severity.s3{background:#ffedd5;color:#a64b00}.severity.s2{background:#fef3c7;color:#8a6300}.severity.s1{background:#e0f2fe;color:#075985}.severity.s0{background:#e9eef5;color:#475569}.card-head h2{margin:8px 0 5px;font-size:1.07rem;line-height:1.35}.scope{display:flex;align-items:center;gap:5px;color:#68778d;font-size:.72rem}.scope mat-icon{font-size:15px;width:15px;height:15px}.priority{min-width:70px;height:max-content;text-align:center;background:#f5f7fb;border:1px solid #e8ecf2;border-radius:11px;padding:9px}.priority strong{display:block;font-size:1.25rem}.priority small{font-size:.56rem;color:#7b8799;letter-spacing:.09em}
+    .source-box{margin:17px 0 12px;padding:13px 14px;border:1px solid #dce4f5;border-radius:12px;background:#f6f8ff}.source-title{display:flex;align-items:center;gap:6px;color:#3550a5;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em}.source-title mat-icon{font-size:17px;width:17px;height:17px}.source-box>strong{display:block;margin-top:7px;font-size:.86rem;color:#263754}.source-box p{margin:5px 0 9px;color:#53627a;font-size:.78rem;line-height:1.45}.source-meta{display:flex;flex-wrap:wrap;gap:8px}.source-meta span{background:#fff;border:1px solid #e1e6f1;border-radius:7px;padding:5px 7px;color:#7e899a;font-size:.64rem}.source-meta b{color:#344054;margin-left:3px}
+    .recommend-grid{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:10px}.answer{padding:13px 14px;border:1px solid #e7ebf2;border-radius:11px;background:#fafbfd}.answer.action{background:#f4faf7;border-color:#dcefe4}.answer-title{display:flex;align-items:center;gap:6px;font-size:.68rem;font-weight:800;color:#344054;text-transform:uppercase;letter-spacing:.035em}.answer-title mat-icon{font-size:17px;width:17px;height:17px;color:#60708a}.answer p{margin:8px 0 0;color:#4d5b70;font-size:.79rem;line-height:1.52}
+    .decision-bar{display:grid;grid-template-columns:repeat(5,1fr);margin-top:12px;border:1px solid #e8ecf2;border-radius:10px;overflow:hidden}.decision-bar div{padding:10px 11px;border-right:1px solid #e8ecf2}.decision-bar div:last-child{border:0}.decision-bar span,.decision-bar strong{display:block}.decision-bar span{font-size:.61rem;color:#8a96a8}.decision-bar strong{margin-top:3px;font-size:.72rem;color:#344054}.decision-bar .safe{color:#16734b}
+    details{margin-top:12px;border-top:1px solid #edf0f5;padding-top:11px}summary{display:flex;align-items:center;gap:6px;width:max-content;cursor:pointer;font-weight:700;color:#59687d;font-size:.73rem}summary mat-icon{font-size:17px;width:17px;height:17px}.evidence p{font-size:.76rem;line-height:1.5;color:#5c687a}.script-head{display:flex;justify-content:space-between;align-items:center;margin:10px 0 6px;font-size:.7rem;color:#758196}pre{white-space:pre-wrap;word-break:break-word;background:#0f172a;color:#dbe6f4;border-radius:10px;padding:14px;max-height:330px;overflow:auto;font-size:.73rem;line-height:1.5}
+    @media(max-width:1100px){.recommend-grid{grid-template-columns:1fr}.decision-bar{grid-template-columns:1fr 1fr}.decision-bar div{border-bottom:1px solid #e8ecf2}}
+    @media(max-width:700px){.heading{display:block}.guard{margin-top:12px;width:max-content}.toolbar{display:block}.summary{margin-top:8px}.card-head{display:block}.priority{margin-top:10px;width:66px}.decision-bar{grid-template-columns:1fr}.script-head{align-items:flex-start;gap:10px}}
   `]
 })
 export class RecommendationsComponent implements OnInit {
@@ -87,6 +141,15 @@ export class RecommendationsComponent implements OnInit {
 
   readonly recommendations = signal<RecommendationListItem[]>([]);
   readonly loading = signal(true);
+  readonly statusFilter = signal<RecommendationFilter>('New');
+  readonly copiedId = signal<number | null>(null);
+
+  readonly activeCount = computed(() => this.recommendations().filter(x => x.status === 'New').length);
+  readonly highPriorityCount = computed(() => this.recommendations().filter(x => x.status === 'New' && x.priorityScore >= 70).length);
+  readonly visibleRecommendations = computed(() => {
+    const filter = this.statusFilter();
+    return this.recommendations().filter(x => filter === 'All' || x.status === filter);
+  });
 
   ngOnInit(): void {
     timer(0, 15_000).pipe(
@@ -105,7 +168,21 @@ export class RecommendationsComponent implements OnInit {
     return ['Bilgi', 'Düşük', 'Orta', 'Yüksek', 'Kritik'][value] ?? `Seviye ${value}`;
   }
 
-  async copyScript(script: string): Promise<void> {
+  statusText(value: string): string {
+    return value === 'New' ? 'Aktif' : value === 'Resolved' ? 'Çözüldü' : value;
+  }
+
+  benefitText(value: string): string {
+    return value === 'High' ? 'Yüksek' : value === 'Medium' ? 'Orta' : value === 'Low' ? 'Düşük' : value;
+  }
+
+  riskText(value: string): string {
+    return value === 'High' ? 'Yüksek' : value === 'Medium' ? 'Orta' : value === 'Low' ? 'Düşük' : value;
+  }
+
+  async copyScript(id: number, script: string): Promise<void> {
     await navigator.clipboard.writeText(script);
+    this.copiedId.set(id);
+    setTimeout(() => this.copiedId.set(null), 1600);
   }
 }

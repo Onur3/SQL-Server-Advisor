@@ -119,6 +119,7 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
 
         var indexes = new List<IndexSnapshot>();
         var missingIndexes = new List<MissingIndexSnapshot>();
+        var warnings = new List<string>();
         var capturedAt = DateTimeOffset.UtcNow;
 
         foreach (var databaseName in databaseNames)
@@ -155,14 +156,15 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
             }
             catch (SqlException ex) when (ex.Number is 229 or 297 or 916)
             {
-                // Per-database read permissions are optional. Skip inaccessible databases.
+                warnings.Add($"{databaseName}: indeks analizi atlandı; CONNECT / VIEW DATABASE STATE / VIEW DEFINITION yetkilerini kontrol edin. SQL {ex.Number}.");
             }
         }
 
         return new CollectorBatch
         {
             Indexes = indexes,
-            MissingIndexes = missingIndexes
+            MissingIndexes = missingIndexes,
+            Warnings = warnings
         };
     }
 }

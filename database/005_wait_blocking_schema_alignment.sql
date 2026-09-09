@@ -9,9 +9,15 @@ BEGIN
     ALTER TABLE SNP.Wait
         ADD SignalWaitTimeMs bigint NOT NULL
             CONSTRAINT DF_SNP_Wait_SignalWaitTimeMs DEFAULT (0);
+END
+GO
 
-    IF COL_LENGTH(N'SNP.Wait', N'SignalWaitMs') IS NOT NULL
-        UPDATE SNP.Wait SET SignalWaitTimeMs = ISNULL(SignalWaitMs, 0);
+IF COL_LENGTH(N'SNP.Wait', N'SignalWaitMs') IS NOT NULL
+   AND COL_LENGTH(N'SNP.Wait', N'SignalWaitTimeMs') IS NOT NULL
+BEGIN
+    EXEC sys.sp_executesql N'
+        UPDATE SNP.Wait
+        SET SignalWaitTimeMs = ISNULL(SignalWaitMs, 0);';
 END
 GO
 
@@ -20,9 +26,15 @@ BEGIN
     ALTER TABLE SNP.Wait
         ADD DeltaSignalWaitTimeMs bigint NOT NULL
             CONSTRAINT DF_SNP_Wait_DeltaSignalWaitTimeMs DEFAULT (0);
+END
+GO
 
-    IF COL_LENGTH(N'SNP.Wait', N'DeltaSignalWaitMs') IS NOT NULL
-        UPDATE SNP.Wait SET DeltaSignalWaitTimeMs = ISNULL(DeltaSignalWaitMs, 0);
+IF COL_LENGTH(N'SNP.Wait', N'DeltaSignalWaitMs') IS NOT NULL
+   AND COL_LENGTH(N'SNP.Wait', N'DeltaSignalWaitTimeMs') IS NOT NULL
+BEGIN
+    EXEC sys.sp_executesql N'
+        UPDATE SNP.Wait
+        SET DeltaSignalWaitTimeMs = ISNULL(DeltaSignalWaitMs, 0);';
 END
 GO
 

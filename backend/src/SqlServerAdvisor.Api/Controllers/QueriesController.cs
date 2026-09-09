@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SqlServerAdvisor.Application.DTOs;
+using SqlServerAdvisor.Application.Presentation;
 using SqlServerAdvisor.Infrastructure.Data;
 
 namespace SqlServerAdvisor.Api.Controllers;
@@ -63,6 +64,12 @@ public sealed class QueriesController(AdvisorDbContext db) : ControllerBase
                 var query = definitions[runtime.QueryId];
                 plans.TryGetValue(runtime.PlanId ?? 0, out var plan);
                 servers.TryGetValue(runtime.ServerProfileId, out var serverName);
+                var interpretation = QueryInterpretation.Build(
+                    runtime.ExecutionCount,
+                    runtime.AverageCpuMs,
+                    runtime.AverageDurationMs,
+                    runtime.AverageLogicalReads,
+                    runtime.ImpactScore);
 
                 return new QueryPerformanceDto(
                     query.Id,
@@ -82,6 +89,10 @@ public sealed class QueriesController(AdvisorDbContext db) : ControllerBase
                     runtime.AverageLogicalReads,
                     runtime.TotalLogicalWrites,
                     runtime.ImpactScore,
+                    interpretation.Level,
+                    interpretation.Headline,
+                    interpretation.Summary,
+                    interpretation.SuggestedInspection,
                     runtime.LastExecutionTime,
                     runtime.CapturedAt,
                     runtime.PlanId,

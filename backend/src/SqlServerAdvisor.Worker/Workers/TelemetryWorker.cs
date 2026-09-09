@@ -320,6 +320,8 @@ public sealed class TelemetryWorker(
             .Where(x => x.ServerProfileId == serverId && hashes.Contains(x.QueryHash))
             .ToListAsync(cancellationToken);
 
+        RepairLegacyUnknownDatabaseNames(existingQueries, observations);
+
         var queryMap = existingQueries.ToDictionary(
             x => QueryKey(x.DatabaseName, x.QueryHash),
             StringComparer.OrdinalIgnoreCase);
@@ -436,6 +438,43 @@ public sealed class TelemetryWorker(
 
         return result;
     }
+
+    private static void RepairLegacyUnknownDatabaseNames(
+        IReadOnlyCollection<QueryDefinition> existingQueries,
+        IReadOnlyCollection<QueryObservation> observations)
+    {
+        var resolvedByHash = observations
+            .Where(x => !IsUnresolvedDatabaseName(x.DatabaseName))
+            .GroupBy(x => x.QueryHash, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new
+            {
+                QueryHash = g.Key,
+                Databases = g.Select(x => x.DatabaseName)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray()
+            })
+            .Where(x => x.Databases.Length == 1)
+            .ToDictionary(x => x.QueryHash, x => x.Databases[0], StringComparer.OrdinalIgnoreCase);
+
+        foreach (var legacy in existingQueries.Where(x => IsUnresolvedDatabaseName(x.DatabaseName)))
+        {
+            if (!resolvedByHash.TryGetValue(legacy.QueryHash, out var resolvedDatabase))
+                continue;
+
+            var conflictExists = existingQueries.Any(x =>
+                x.Id != legacy.Id &&
+                x.QueryHash.Equals(legacy.QueryHash, StringComparison.OrdinalIgnoreCase) &&
+                x.DatabaseName.Equals(resolvedDatabase, StringComparison.OrdinalIgnoreCase));
+
+            if (!conflictExists)
+                legacy.DatabaseName = resolvedDatabase;
+        }
+    }
+
+    private static bool IsUnresolvedDatabaseName(string? databaseName) =>
+        string.IsNullOrWhiteSpace(databaseName) ||
+        databaseName.Equals("<unknown>", StringComparison.OrdinalIgnoreCase) ||
+        databaseName.Contains("DB bağlamı yok", StringComparison.OrdinalIgnoreCase);
 
     private static string QueryKey(string databaseName, string queryHash) => $"{databaseName}\u001f{queryHash}";
     private static string PlanKey(long queryId, string planHash, string source) => $"{queryId}\u001f{planHash}\u001f{source}";

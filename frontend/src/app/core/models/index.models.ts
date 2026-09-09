@@ -15,6 +15,10 @@ export interface FragmentedIndex {
   userUpdates: number;
   avgFragmentationPercent?: number | null;
   pageCount?: number | null;
+  diagnosticLevel: string;
+  diagnosticHeadline: string;
+  diagnosticSummary: string;
+  suggestedInspection: string;
   capturedAt: string;
 }
 
@@ -32,5 +36,9 @@ export interface MissingIndexCandidate {
   avgTotalUserCost: number;
   avgUserImpact: number;
   improvementMeasure: number;
+  diagnosticLevel: string;
+  diagnosticHeadline: string;
+  diagnosticSummary: string;
+  suggestedInspection: string;
   capturedAt: string;
 }

@@ -36,7 +36,7 @@ jobs:
             packages/part071.b64 \
             packages/part072.b64 \
             packages/part08.b64 \
-            | tr -d '[:space:]' > /tmp/sql-server-advisor.b64
+            | tr -cd 'A-Za-z0-9+/=' > /tmp/sql-server-advisor.b64
           base64 --decode /tmp/sql-server-advisor.b64 > /tmp/sql-server-advisor.zip
           unzip -t /tmp/sql-server-advisor.zip
 

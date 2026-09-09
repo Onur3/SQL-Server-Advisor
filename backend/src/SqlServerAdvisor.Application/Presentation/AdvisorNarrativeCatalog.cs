@@ -61,28 +61,60 @@ public static class AdvisorNarrativeCatalog
             "query_stats"),
 
         "IDX-001" => new(
-            "Yüksek İndeks Fragmentation",
+            "İndeks Bakım Adayı",
             "İndeks Sağlığı",
-            "Anlamlı büyüklükte bir indekste yüksek fiziksel fragmentation tespit edildi.",
+            "Anlamlı büyüklükte ve kullanılan bir indekste yüksek fiziksel fragmentation tespit edildi.",
             "Büyük ve yoğun okunan indekslerde fragmentation daha fazla sayfa okuması ve I/O maliyeti oluşturabilir; ancak tek başına bakım kararı değildir.",
-            "Page count, kullanım sıklığı, page density ve storage latency ile birlikte bakım ihtiyacını doğrulayın.",
+            "Page count, kullanım sıklığı ve storage latency ile birlikte REORGANIZE/REBUILD ihtiyacını doğrulayın.",
             "account_tree"),
 
         "IDX-002" => new(
             "Eksik İndeks Adayı",
             "İndeks Sağlığı",
-            "SQL Server missing-index DMV yüksek potansiyel fayda gösteren bir indeks adayı bildirdi.",
+            "SQL Server missing-index DMV yüksek potansiyel fayda gösteren ve mevcut indekslerce doğrudan kapsanmayan bir aday bildirdi.",
             "Doğru tasarlanmış bir indeks pahalı scan ve lookup maliyetini azaltabilir; yanlış indeks ise write ve bakım maliyetini artırır.",
-            "Mevcut overlapping indeksleri, ilgili execution plan'ları ve write yoğunluğunu karşılaştırın.",
+            "İlgili execution plan'ı, key/include sırasını ve write yoğunluğunu doğrulayın; doğrudan CREATE INDEX çalıştırmayın.",
             "playlist_add_check"),
 
+        "IDX-003" => new(
+            "Düşük Değer / Yüksek Bakım Maliyeti",
+            "İndeks Sağlığı",
+            "Yeterli kullanım gözlem süresinde çok az okunan fakat yoğun şekilde güncellenen bir indeks tespit edildi.",
+            "Her ek indeks INSERT/UPDATE/DELETE sırasında bakım, log ve depolama maliyeti oluşturur. Kullanılmayan indeksler gereksiz write baskısı yaratabilir.",
+            "SQL restart zamanını, raporlama/ay sonu gibi seyrek workload'ları ve query plan bağımlılıklarını doğrulamadan DROP INDEX uygulamayın.",
+            "delete_sweep"),
+
+        "IDX-004" => new(
+            "Örtüşen İndeks Adayı",
+            "İndeks Sağlığı",
+            "Aynı tabloda aynı key yapısını paylaşan ve başka bir indeks tarafından kapsanabilecek bir indeks tespit edildi.",
+            "Örtüşen indeksler benzer okuma yollarını sağlarken write, log, buffer pool ve bakım maliyetini çoğaltabilir.",
+            "İki indeksin query plan kullanımını, INCLUDE farklarını, filtrelerini ve boyutlarını karşılaştırıp konsolidasyon ihtiyacını değerlendirin.",
+            "difference"),
+
         "STATS-001" => new(
-            "Güncelliğini Kaybeden Statistics",
+            "Statistics Freshness Riski",
             "Optimizer",
             "Statistics üzerinde yüksek değişiklik oranı ve/veya uzun güncelleme yaşı tespit edildi.",
-            "Eski veya yetersiz örneklenmiş statistics cardinality tahminlerini bozarak yanlış join, scan veya memory grant kararlarına yol açabilir.",
+            "Eski statistics cardinality tahminlerini bozarak yanlış join, scan veya memory grant kararlarına yol açabilir.",
             "İlgili sorgu planındaki estimated/actual row farklarını ve statistics sample bilgisini doğrulayın.",
             "analytics"),
+
+        "STATS-002" => new(
+            "NORECOMPUTE Statistics Riski",
+            "Optimizer",
+            "NORECOMPUTE durumundaki bir statistics üzerinde anlamlı veri değişimi birikmiş.",
+            "Auto-update engellendiğinde distribution değişse bile optimizer eski histogramı kullanmaya devam edebilir.",
+            "Bu ayarın bilinçli olup olmadığını, estimated/actual row farklarını ve ilgili workload'u doğrulayın.",
+            "pause_circle"),
+
+        "STATS-003" => new(
+            "Statistics Sample İnceleme Adayı",
+            "Optimizer",
+            "Büyük bir tabloda düşük sample oranı ile birlikte anlamlı veri değişimi tespit edildi.",
+            "Düşük sample tek başına hata değildir ancak skewed dağılımlarda histogram kalitesini ve cardinality tahminlerini etkileyebilir.",
+            "Histogram/plan tahminlerini doğrulayın; gerekli görülürse bakım penceresinde uygun SAMPLE oranını test edin, körlemesine FULLSCAN uygulamayın.",
+            "science"),
 
         "DLK-001" => new(
             "Deadlock Deseni",

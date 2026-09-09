@@ -65,6 +65,7 @@ public sealed class CollectorBatch
     public IReadOnlyList<StatisticsSnapshot> Statistics { get; init; } = [];
     public IReadOnlyList<CodeObjectObservation> CodeObjects { get; init; } = [];
     public IReadOnlyList<ServerCapability> Capabilities { get; init; } = [];
+    public IReadOnlyList<string> Warnings { get; init; } = [];
 
     public int RowCount =>
         (ServerSnapshot is null ? 0 : 1) + Databases.Count + DatabaseFiles.Count + Configurations.Count +

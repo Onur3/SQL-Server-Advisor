@@ -29,7 +29,9 @@ import { MatIconModule } from '@angular/material/icon';
           <a mat-list-item routerLink="/telemetry" routerLinkActive="active">
             <mat-icon matListItemIcon>monitor_heart</mat-icon><span matListItemTitle>Wait & Blocking</span>
           </a>
-          <a mat-list-item class="disabled"><mat-icon matListItemIcon>query_stats</mat-icon><span matListItemTitle>Sorgular</span></a>
+          <a mat-list-item routerLink="/queries" routerLinkActive="active">
+            <mat-icon matListItemIcon>query_stats</mat-icon><span matListItemTitle>Sorgular</span>
+          </a>
           <a mat-list-item routerLink="/findings" routerLinkActive="active">
             <mat-icon matListItemIcon>rule</mat-icon><span matListItemTitle>Bulgular</span>
           </a>

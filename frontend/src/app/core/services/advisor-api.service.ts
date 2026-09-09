@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 import { ConnectionTestResult, CreateServerRequest, DashboardServer, ServerListItem, WorkerStatus } from '../models/server.models';
 import { FindingListItem, RecommendationListItem } from '../models/analysis.models';
 import { BlockingTelemetry, WaitTelemetry } from '../models/telemetry.models';
+import { QueryPerformance, QueryPlan } from '../models/query.models';
 
 @Injectable({ providedIn: 'root' })
 export class AdvisorApiService {
@@ -52,5 +53,13 @@ export class AdvisorApiService {
     return this.http.get<BlockingTelemetry[]>(`${this.baseUrl}/telemetry/blocking`, {
       params: { minutes, take }
     });
+  }
+
+  getQueryPerformance(take = 100): Observable<QueryPerformance[]> {
+    return this.http.get<QueryPerformance[]>(`${this.baseUrl}/queries`, { params: { take } });
+  }
+
+  getQueryPlan(queryId: number): Observable<QueryPlan> {
+    return this.http.get<QueryPlan>(`${this.baseUrl}/queries/${queryId}/plan`);
   }
 }

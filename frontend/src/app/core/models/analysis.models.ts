@@ -3,6 +3,9 @@ export interface FindingListItem {
   serverProfileId: string;
   serverName: string;
   queryId?: number | null;
+  queryHash?: string | null;
+  queryText?: string | null;
+  hasExecutionPlan: boolean;
   databaseName?: string | null;
   objectName?: string | null;
   scopeText: string;
@@ -33,6 +36,9 @@ export interface RecommendationListItem {
   serverProfileId: string;
   serverName: string;
   queryId?: number | null;
+  queryHash?: string | null;
+  queryText?: string | null;
+  hasExecutionPlan: boolean;
   databaseName?: string | null;
   objectName?: string | null;
   scopeText: string;

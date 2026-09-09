@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SqlServerAdvisor.Analysis.Scoring;
 using SqlServerAdvisor.Application.DTOs;
+using SqlServerAdvisor.Domain.Enums;
 using SqlServerAdvisor.Infrastructure.Data;
 
 namespace SqlServerAdvisor.Api.Controllers;
@@ -23,7 +24,15 @@ public sealed class DashboardController(AdvisorDbContext db) : ControllerBase
                 .OrderByDescending(x => x.CapturedAt)
                 .FirstOrDefaultAsync(cancellationToken);
 
+            var openFindings = await db.Findings.AsNoTracking()
+                .Where(x => x.ServerProfileId == server.Id && x.Status == "Open")
+                .OrderByDescending(x => x.FindingScore)
+                .ToListAsync(cancellationToken);
+
             var online = snapshot is not null && snapshot.CapturedAt >= DateTimeOffset.UtcNow.AddMinutes(-1);
+            var liveHealth = snapshot is null ? null : ServerHealthScorer.Calculate(snapshot);
+            var advisorHealth = ServerHealthScorer.ApplyAdvisorPenalty(liveHealth, openFindings);
+
             result.Add(new DashboardServerDto(
                 server.Id,
                 server.Name,
@@ -35,8 +44,12 @@ public sealed class DashboardController(AdvisorDbContext db) : ControllerBase
                 snapshot?.ActiveSessions ?? 0,
                 snapshot?.ActiveRequests ?? 0,
                 snapshot?.BlockedRequests ?? 0,
-                snapshot is null ? null : ServerHealthScorer.Calculate(snapshot),
-                snapshot is null ? 0 : ServerHealthScorer.DataCoveragePercent(snapshot)));
+                advisorHealth,
+                snapshot is null ? 0 : ServerHealthScorer.DataCoveragePercent(snapshot),
+                openFindings.Count,
+                openFindings.Count(x => x.Severity == FindingSeverity.High),
+                openFindings.Count(x => x.Severity == FindingSeverity.Critical),
+                openFindings.Count == 0 ? null : openFindings.Max(x => x.FindingScore)));
         }
 
         return Ok(result);

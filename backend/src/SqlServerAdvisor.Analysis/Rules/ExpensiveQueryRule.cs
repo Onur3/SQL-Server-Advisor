@@ -40,8 +40,16 @@ public sealed class ExpensiveQueryRule : IQueryAnalysisRule
             : runtime.ExecutionCount >= 5 ? 85m
             : 70m;
 
-        var title = $"Yüksek maliyetli sorgu: {query.DatabaseName} · {runtime.AverageDurationMs:N0} ms · {runtime.AverageLogicalReads:N0} logical read";
-        var description = $"Plan cache verisinde sorgu ortalama {runtime.AverageCpuMs:N1} ms CPU, {runtime.AverageDurationMs:N1} ms süre ve {runtime.AverageLogicalReads:N0} logical read tüketiyor. ExecutionCount={runtime.ExecutionCount:N0}, TotalCpu={runtime.TotalCpuMs:N0} ms. Bu bulgu salt-okunur DMV verisinden üretilmiştir.";
+        var databaseResolved = !IsUnresolvedDatabaseName(query.DatabaseName);
+        var target = query.ObjectName is not null
+            ? (databaseResolved ? $"{query.DatabaseName} · {query.ObjectName}" : query.ObjectName)
+            : (databaseResolved ? query.DatabaseName : "Ad-hoc sorgu");
+
+        var title = $"Pahalı sorgu: {target} · {runtime.AverageDurationMs:N0} ms · {runtime.AverageLogicalReads:N0} logical read";
+        var databaseContext = databaseResolved
+            ? $"Veritabanı={query.DatabaseName}."
+            : "Plan cache bu ad-hoc sorgu için veritabanı bağlamını kesin çözemedi; SQL metni ve execution plan üzerinden nesne bağlamı doğrulanmalıdır.";
+        var description = $"{databaseContext} Ortalama CPU={runtime.AverageCpuMs:N1} ms, süre={runtime.AverageDurationMs:N1} ms, logical read={runtime.AverageLogicalReads:N0}, execution={runtime.ExecutionCount:N0}, total CPU={runtime.TotalCpuMs:N0} ms. Bu bulgu salt-okunur DMV verisinden üretilmiştir.";
 
         IReadOnlyCollection<Finding> result =
         [
@@ -49,7 +57,7 @@ public sealed class ExpensiveQueryRule : IQueryAnalysisRule
             {
                 ServerProfileId = serverProfileId,
                 QueryId = query.Id,
-                DatabaseName = query.DatabaseName,
+                DatabaseName = databaseResolved ? query.DatabaseName : null,
                 ObjectName = query.ObjectName,
                 RuleId = "QRY-001",
                 Category = "QueryPerformance",
@@ -59,7 +67,7 @@ public sealed class ExpensiveQueryRule : IQueryAnalysisRule
                 ConfidenceScore = confidence,
                 ImpactScore = score,
                 FindingScore = score,
-                Fingerprint = $"QRY-001:{serverProfileId:N}:{query.DatabaseName}:{query.QueryHash}",
+                Fingerprint = $"QRY-001:{serverProfileId:N}:{query.QueryHash}",
                 FirstDetectedAt = capturedAt,
                 LastDetectedAt = capturedAt
             }
@@ -67,4 +75,9 @@ public sealed class ExpensiveQueryRule : IQueryAnalysisRule
 
         return Task.FromResult(result);
     }
+
+    private static bool IsUnresolvedDatabaseName(string? databaseName) =>
+        string.IsNullOrWhiteSpace(databaseName) ||
+        databaseName.Equals("<unknown>", StringComparison.OrdinalIgnoreCase) ||
+        databaseName.Contains("DB bağlamı yok", StringComparison.OrdinalIgnoreCase);
 }

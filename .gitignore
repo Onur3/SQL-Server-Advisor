@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.log
+DataProtectionKeys/
+.env

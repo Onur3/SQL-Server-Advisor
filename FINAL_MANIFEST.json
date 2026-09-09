@@ -1,0 +1,385 @@
+{
+  "fileCount": 76,
+  "files": [
+    {
+      "path": ".gitignore",
+      "size": 107,
+      "sha256": "a9d40c436f0f1f577d0463d188306fef52ff8433e8215a399dc8a0a984620107"
+    },
+    {
+      "path": "BUILD_STATUS.md",
+      "size": 1085,
+      "sha256": "a390d07629837cb5bfa6cfe7601a59a36d2d53648267eb9fc647986c58123d8c"
+    },
+    {
+      "path": "README.md",
+      "size": 3856,
+      "sha256": "41a2a2bcf93a2a201ba9c4e63c44063b52adcd85bc0f4b26d0d0e69b410991b4"
+    },
+    {
+      "path": "backend/Directory.Build.props",
+      "size": 276,
+      "sha256": "16202c981854e40d383fbc41ba0aca0d79e77da8974360b1d1e5f089f4361ddf"
+    },
+    {
+      "path": "backend/SqlServerAdvisor.slnx",
+      "size": 663,
+      "sha256": "030bf9b7c02a89e35243d16ec3f736f3063019e8d0b08add914309032a519dad"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Analysis/DependencyInjection.cs",
+      "size": 413,
+      "sha256": "7115bf3a4e5741ff4d1782ed0a321fea9b9b61f6034c159052ea774c7d4592b9"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Analysis/Rules/BlockingPressureRule.cs",
+      "size": 1767,
+      "sha256": "009f99b25cb258316d2b17ba95183eb912464fce5ab79b67932ea7d91fcc1b96"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Analysis/Scoring/ServerHealthScorer.cs",
+      "size": 1675,
+      "sha256": "08583129daab43b3b7b0342263fef8f62e67deebbbc01abc38f6df9d1ffa332a"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Analysis/SqlServerAdvisor.Analysis.csproj",
+      "size": 396,
+      "sha256": "9321d54c00a939059aba034a1626bc43610f48257a0504caeefe76f8c794ca8c"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Api/Controllers/DashboardController.cs",
+      "size": 2401,
+      "sha256": "44a175ffe74b6beb2236e6adc1f7bf668be3541eaa71c62b0d047e0fdca8d822"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Api/Controllers/ServersController.cs",
+      "size": 3903,
+      "sha256": "67c656c88c1184d0415f73ef477980ce9763598c50140bf893512132628953d3"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Api/Hubs/AdvisorHub.cs",
+      "size": 113,
+      "sha256": "a7ce0b2861f5e7a9ba4a6539d6bc8d3064ed654a44950a220f37fe49606af370"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Api/Program.cs",
+      "size": 1037,
+      "sha256": "eca46de21090288970542cdc329e43effef8ab9023f40705b0b90eaacbafdf8f"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Api/Properties/launchSettings.json",
+      "size": 387,
+      "sha256": "189c45f7726b1d845eb23e98c865cd132060ae7dc3a316ca8308dcf32e71ba62"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Api/SqlServerAdvisor.Api.csproj",
+      "size": 597,
+      "sha256": "673d75ec5774d83360080a2e196c80d16467bb4a34f4022f8ca676089ec37155"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Api/appsettings.json",
+      "size": 490,
+      "sha256": "193f402c9a30b288f1124261dad03ffeaae8a65e7b48c3e82d48b944ce24abb6"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Application/Contracts/IAdvisorCollector.cs",
+      "size": 374,
+      "sha256": "3b4508c666a4c298460394c5f991b133287153a2447716fc6882f261cbe7aa63"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Application/Contracts/IAnalysisRule.cs",
+      "size": 270,
+      "sha256": "cc26373524fb36b866dc9dce365749f5c6cdd2b65b3d7cc0a40801a23d5ea36c"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Application/Contracts/IAuditWriter.cs",
+      "size": 243,
+      "sha256": "d9b9e0b56253610c5758bc0c2e11b615d1a387e1334d48a497391619a91bed78"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Application/Contracts/ICredentialProtector.cs",
+      "size": 175,
+      "sha256": "66e9eb838100c93c3268af9936233b6be38fc3b82b06f576bfed7819062cee80"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Application/Contracts/IMonitoredConnectionStringFactory.cs",
+      "size": 188,
+      "sha256": "ff89afd9569d65c101bc27f8d1831400248622573d2ea21aa388aea9ea0858d7"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Application/Contracts/IServerCapabilityScanner.cs",
+      "size": 280,
+      "sha256": "8fecc792565ff2691fd420c541d0521fb8403d41b4706989e988c1b8751c283a"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Application/Contracts/IServerHealthCollector.cs",
+      "size": 234,
+      "sha256": "aa7e8f216098ca4f772f2844fc08d57b232a8106f3125707ffbd258f6abb6227"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Application/DTOs/CollectorDtos.cs",
+      "size": 3149,
+      "sha256": "7126f8a63ac158b34563e3f79492039c732e2baf610360c05c8ca4aeae1e46e5"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Application/DTOs/DashboardDtos.cs",
+      "size": 540,
+      "sha256": "28a979fbacb683b2d61952c21cb0db6b8c603dc731f9cb07997868e02c5efce6"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Application/DTOs/ServerDtos.cs",
+      "size": 835,
+      "sha256": "cc3b619325c7ceed2395ecfe9fd672dc1bf0b5a534803635cac8ce65d0a10571"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Application/SqlServerAdvisor.Application.csproj",
+      "size": 167,
+      "sha256": "9d23ed378c3c18a7017e284cd060750b75addb8a78873e1c716e10d359bf9381"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Domain/Entities/AnalysisEntities.cs",
+      "size": 3122,
+      "sha256": "12a33ce56490cf136d1a3b61afcc2f0f6d558e69070b2eca057ecf1b07332222"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Domain/Entities/CollectorRun.cs",
+      "size": 509,
+      "sha256": "93264a92457036b07cf03619ab8e7e3d7d5a58653204b0c7434bdcac15f980e3"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Domain/Entities/Finding.cs",
+      "size": 1070,
+      "sha256": "3be78e475c24c1bdfdcd2a9959d4ece1a22be550c93978fed266bb9509e6bd89"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Domain/Entities/QueryEntities.cs",
+      "size": 4936,
+      "sha256": "5111fb181c60c5f61edbc4c362d5a0f66b4e75766d904bf198786728aed83212"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Domain/Entities/Recommendation.cs",
+      "size": 967,
+      "sha256": "acd99201e043b17af68602846c0503b271a5800254b7462e7c5c4ff9b10fa4e2"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Domain/Entities/ServerProfile.cs",
+      "size": 900,
+      "sha256": "8c4743ed29ec791bd87bf0daa7ff013680c34fc203a998bab9b9314ad55715a7"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Domain/Entities/ServerSnapshot.cs",
+      "size": 1024,
+      "sha256": "dc6f5709050802cfb7aee5f0028ab8eff2e7f1ad760e1b29bc4d8d429e906842"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Domain/Entities/TelemetryEntities.cs",
+      "size": 5463,
+      "sha256": "ed811cf1594655e652da5ab5eeb3c77335d7f5eb56453cf40966c3c5c0f9bb26"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Domain/Entities/WorkerHeartbeat.cs",
+      "size": 454,
+      "sha256": "98ac36a6e5ae195153206a5d9203fa48254d424291055d55d4ed1a886bc0de0f"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Domain/Enums/FindingSeverity.cs",
+      "size": 155,
+      "sha256": "834b81d031f388780beb57556536db857d2d7907a2d919a45d6a49bddd8b09b2"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Domain/Enums/ServerAuthenticationType.cs",
+      "size": 117,
+      "sha256": "2819af3df484023a9377ef36bf0aa78b70d8e66c2d5c21830b53f5aa7f4fc8e8"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Domain/SqlServerAdvisor.Domain.csproj",
+      "size": 36,
+      "sha256": "8d654c44b7bebb6b31a9f2f606927f45b5072193adc4eef8cce3f3cf3b278df3"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Infrastructure/Data/AdvisorDbContext.cs",
+      "size": 19614,
+      "sha256": "de7361ada55cd309f2d2eb4c1029cff060004e116c7994488eea90ee7f5936c7"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Infrastructure/DependencyInjection.cs",
+      "size": 1338,
+      "sha256": "6125236edeba8c4214c64d6e1b6115475e70ffc2f44118fbbbb1fdefe76c2a57"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Infrastructure/Security/DataProtectionCredentialProtector.cs",
+      "size": 552,
+      "sha256": "985e0a8d5df5f21e3719c8f89a4bfc3f5cbdb74187fb2f439843b086563b7a32"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Infrastructure/SqlServerAdvisor.Infrastructure.csproj",
+      "size": 757,
+      "sha256": "3ba4d7cb25c0923783b4d4ef3408c8f2f9a4dcb228446991c1659f0c67e91520"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.SqlServer/Capability/ServerCapabilityScanner.cs",
+      "size": 1413,
+      "sha256": "d9c49fc43e6d737f43aea3cfc8f7af8c9ef66c9cc9eaa5e3c578010ae144d56b"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.SqlServer/Collectors/ServerHealthCollector.cs",
+      "size": 6756,
+      "sha256": "2e11ce52c5d55eaa6bdbe33cd3e4563b66cf3d0a5adeff96b0efc5970d8a444f"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.SqlServer/Connection/MonitoredConnectionStringFactory.cs",
+      "size": 1563,
+      "sha256": "08782643ce9c93532c54f7f8d3debaaf5b7feb053afb51cdee539ee278a76d03"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.SqlServer/DependencyInjection.cs",
+      "size": 709,
+      "sha256": "54ec8671bfa6bf80cae036e91a7fb8e08aa2d0d6fd2669e0a6a4e3fb80118d0b"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.SqlServer/SqlServerAdvisor.SqlServer.csproj",
+      "size": 531,
+      "sha256": "81d91cc26856193b4e532602b1227d2d22f54c82861965b0e0a3ea46bbba59b0"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Worker/Program.cs",
+      "size": 621,
+      "sha256": "041eb0c8ccbd592b5f171451496041111d24b7c9e66edc6d6d4fa28cb6675c35"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Worker/SqlServerAdvisor.Worker.csproj",
+      "size": 616,
+      "sha256": "0e15f87e166cff2ddca16f8abed903c0618c2917c501445a1d2a3a3a2a5875c7"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Worker/Workers/HeartbeatWorker.cs",
+      "size": 2096,
+      "sha256": "7b068778c5affe50520455b3e43d98d33fb1062ea192d2674e81300d5255df2a"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Worker/Workers/ServerSnapshotWorker.cs",
+      "size": 4903,
+      "sha256": "1fd8a9386f4960396da160548797798c94eccbf3eae9d0a6dc41931becc2f5e7"
+    },
+    {
+      "path": "backend/src/SqlServerAdvisor.Worker/appsettings.json",
+      "size": 420,
+      "sha256": "4f1a47a977934ab0a8d80d3920b60648b057a14e935b0f1771b4f68be925f477"
+    },
+    {
+      "path": "database/001_create_SQLAdvisor.sql",
+      "size": 16663,
+      "sha256": "72fabb2e6baa6875f2d5a1bfaf7bd49a096a32937940b503cc96490bfac87f7c"
+    },
+    {
+      "path": "database/002_monitored_server_readonly_login_template.sql",
+      "size": 1166,
+      "sha256": "3ce90920badd6f5462e0ecd631c9a74d7a2d67894c8322dade0bddf0ce15aa75"
+    },
+    {
+      "path": "database/003_advisor_app_permissions_template.sql",
+      "size": 796,
+      "sha256": "f60aa575f715400550d79e5af30b879330c1300968799f185fdb2088f18ecb65"
+    },
+    {
+      "path": "deploy/frontend-web.config",
+      "size": 804,
+      "sha256": "b317a3b27432506432d6eef121f1024d8479861488ec27f1c9544ae329275870"
+    },
+    {
+      "path": "deploy/install-worker.ps1",
+      "size": 733,
+      "sha256": "dbcd1daf0ba643f48dda8adf62e582c69658c33b14ce8c3722182d56d648b996"
+    },
+    {
+      "path": "deploy/web.config",
+      "size": 464,
+      "sha256": "2740d296238849a147ed7a960becfa274c71c0951d8293c4e6beb80012eba54a"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "size": 2169,
+      "sha256": "2b9cda46a3b50e1b6d4d24efb6e8b63cd97c8aa2abceabf8f74a625655fd9522"
+    },
+    {
+      "path": "docs/ROADMAP.md",
+      "size": 1246,
+      "sha256": "139757390b325311433be6f310f43458ddc2635794073de8b56576c25b06c2bc"
+    },
+    {
+      "path": "frontend/angular.json",
+      "size": 1667,
+      "sha256": "f9f0b550f490f28070f12d091a1f6c3b5710c64ccab9ffd4feda25491773c907"
+    },
+    {
+      "path": "frontend/package.json",
+      "size": 853,
+      "sha256": "cb4a110aba5f24a57ab079a2e94f4028b3bef90a141dc37b662f55d767fd3084"
+    },
+    {
+      "path": "frontend/proxy.conf.json",
+      "size": 194,
+      "sha256": "70f27049b1627a1fb9d3f86415061163ff565effc5eb18e3db05505d822aa4fc"
+    },
+    {
+      "path": "frontend/src/app/app.component.ts",
+      "size": 3023,
+      "sha256": "bb81a2be0c1e1b199aa926b87ced822b00fb2bb9fb8df332de68000e79271ad4"
+    },
+    {
+      "path": "frontend/src/app/app.config.ts",
+      "size": 400,
+      "sha256": "63484c62f24e583e5e3d5885579182d60f0c80fb532ad6f158f2a71cb9b84c23"
+    },
+    {
+      "path": "frontend/src/app/app.routes.ts",
+      "size": 381,
+      "sha256": "7ac45d9380cc4285334b460c220811ae00a52db82f7cdc54bddeeed9b9419ad6"
+    },
+    {
+      "path": "frontend/src/app/core/models/server.models.ts",
+      "size": 1393,
+      "sha256": "c15f8cf8696e7e09d36ca61f8ca3e124103efcc994717937e935fd22cdab236d"
+    },
+    {
+      "path": "frontend/src/app/core/services/advisor-api.service.ts",
+      "size": 1312,
+      "sha256": "205439128c9429a7b670b1fa5ca9ef7eb29bba6995550c2e5911901b58f5d922"
+    },
+    {
+      "path": "frontend/src/app/features/dashboard/dashboard.component.ts",
+      "size": 6459,
+      "sha256": "9683e7ced49640146725bcdbaeac290d323ccae1a7cf6a20af7a1bb6c3c34275"
+    },
+    {
+      "path": "frontend/src/app/features/servers/servers.component.ts",
+      "size": 8923,
+      "sha256": "ed52394b5e0c96c0aee8319690675d43ee89e96182f1ec44f78030bd61558f34"
+    },
+    {
+      "path": "frontend/src/index.html",
+      "size": 245,
+      "sha256": "fb495e8ec23d478e2e0d14f11905647627819d5fab3c5a76ff48ec0d10a83f5b"
+    },
+    {
+      "path": "frontend/src/main.ts",
+      "size": 233,
+      "sha256": "bc0c3b2192db883ff85c8be81c57ba284615535f7f2d63cc8f36831110692c7b"
+    },
+    {
+      "path": "frontend/src/styles.scss",
+      "size": 789,
+      "sha256": "32bc3ab5b98c4a6ed426d4a26617d4c64bff3eb7cbdb3bce691e9e79d34d1dd3"
+    },
+    {
+      "path": "frontend/tsconfig.app.json",
+      "size": 160,
+      "sha256": "ab8820f036eaf80ed6add06e81fe25b8faa0159059e6dad57519dec07235f2cf"
+    },
+    {
+      "path": "frontend/tsconfig.json",
+      "size": 771,
+      "sha256": "54f56d0637494aa7d9630c3e375c12d184611764e40911a807661434fdc777ba"
+    }
+  ]
+}

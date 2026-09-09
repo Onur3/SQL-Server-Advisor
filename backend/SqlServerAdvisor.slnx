@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SqlServerAdvisor.Domain/SqlServerAdvisor.Domain.csproj" />
+    <Project Path="src/SqlServerAdvisor.Application/SqlServerAdvisor.Application.csproj" />
+    <Project Path="src/SqlServerAdvisor.Infrastructure/SqlServerAdvisor.Infrastructure.csproj" />
+    <Project Path="src/SqlServerAdvisor.SqlServer/SqlServerAdvisor.SqlServer.csproj" />
+    <Project Path="src/SqlServerAdvisor.Analysis/SqlServerAdvisor.Analysis.csproj" />
+    <Project Path="src/SqlServerAdvisor.Api/SqlServerAdvisor.Api.csproj" />
+    <Project Path="src/SqlServerAdvisor.Worker/SqlServerAdvisor.Worker.csproj" />
+  </Folder>
+</Solution>

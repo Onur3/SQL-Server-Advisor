@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="../SqlServerAdvisor.Application/SqlServerAdvisor.Application.csproj" />
+    <ProjectReference Include="../SqlServerAdvisor.Infrastructure/SqlServerAdvisor.Infrastructure.csproj" />
+    <ProjectReference Include="../SqlServerAdvisor.SqlServer/SqlServerAdvisor.SqlServer.csproj" />
+    <ProjectReference Include="../SqlServerAdvisor.Analysis/SqlServerAdvisor.Analysis.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
+  </ItemGroup>
+</Project>

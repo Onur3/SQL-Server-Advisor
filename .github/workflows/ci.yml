@@ -41,12 +41,12 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-  deployment-script:
-    name: PowerShell deployment syntax
+  deployment:
+    name: Deployment scripts and settings
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Parse deploy scripts
+      - name: Parse PowerShell deployment scripts
         shell: pwsh
         run: |
           $failed = $false
@@ -68,3 +68,26 @@ jobs:
             }
           }
           if ($failed) { exit 1 }
+      - name: Validate centralized install settings
+        shell: pwsh
+        run: |
+          $path = 'deploy/install.settings.json'
+          $settings = Get-Content -Raw $path | ConvertFrom-Json
+          foreach ($section in @('installation','web','certificate','database','build')) {
+            if ($null -eq $settings.PSObject.Properties[$section]) {
+              throw "Missing settings section: $section"
+            }
+          }
+          if ($settings.web.protocol -notin @('http','https')) {
+            throw 'web.protocol must be http or https'
+          }
+          if ($settings.certificate.mode -notin @('auto','thumbprint','pfx')) {
+            throw 'certificate.mode must be auto, thumbprint or pfx'
+          }
+          if ([string]::IsNullOrWhiteSpace([string]$settings.installation.installRoot)) {
+            throw 'installation.installRoot is required'
+          }
+          if ([string]::IsNullOrWhiteSpace([string]$settings.web.hostName)) {
+            throw 'web.hostName is required'
+          }
+          Write-Host 'deploy/install.settings.json validation OK'

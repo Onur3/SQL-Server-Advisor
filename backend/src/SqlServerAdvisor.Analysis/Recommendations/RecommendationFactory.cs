@@ -18,6 +18,7 @@ public sealed class RecommendationFactory : IRecommendationFactory
             "IDX-001" => CreateFragmentationRecommendation(finding),
             "IDX-002" => CreateMissingIndexRecommendation(finding),
             "STATS-001" => CreateStatisticsRecommendation(finding),
+            "DLK-001" => CreateDeadlockRecommendation(finding),
             _ => null
         };
 
@@ -131,6 +132,19 @@ public sealed class RecommendationFactory : IRecommendationFactory
         ConfidenceScore = finding.ConfidenceScore,
         RecommendedAction = "İlgili statistics kaydının last_updated, rows, rows_sampled ve modification_counter değerlerini sorgu planıyla birlikte inceleyin. Güncelleme gerekiyorsa bakım penceresi, sample oranı ve tablo büyüklüğü dikkate alınarak DBA tarafından uygulanmalıdır.",
         ScriptText = "SELECT OBJECT_SCHEMA_NAME(s.object_id) AS schema_name, OBJECT_NAME(s.object_id) AS table_name, s.name AS statistics_name, p.last_updated, p.rows, p.rows_sampled, p.modification_counter FROM sys.stats s OUTER APPLY sys.dm_db_stats_properties(s.object_id, s.stats_id) p ORDER BY p.modification_counter DESC;",
+        Status = "New"
+    };
+
+    private static Recommendation CreateDeadlockRecommendation(Finding finding) => new()
+    {
+        PriorityScore = finding.FindingScore,
+        Title = "Deadlock graph üzerindeki erişim sırası ve indeks yollarını inceleyin",
+        Explanation = "Deadlock, eşzamanlı transaction'ların birbirinin kilitlerini döngüsel olarak beklemesi sonucu SQL Server'ın bir işlemi victim seçerek sonlandırmasıdır. Çözüm graph içindeki kaynaklar, transaction sırası ve sorgu planları üzerinden yapılmalıdır.",
+        ExpectedBenefit = "High",
+        RiskLevel = "Low",
+        ConfidenceScore = finding.ConfidenceScore,
+        RecommendedAction = "Deadlock XML içindeki victim, process-list ve resource-list düğümlerini inceleyin. Transaction'ların nesnelere aynı sırayla erişmesini, transaction kapsamının kısa tutulmasını ve uygun indeks erişim yollarını değerlendirin. Session kill veya otomatik production değişikliği uygulanmaz.",
+        ScriptText = "SELECT s.name AS session_name, t.target_name, CAST(t.target_data AS xml) AS target_data FROM sys.dm_xe_sessions s JOIN sys.dm_xe_session_targets t ON t.event_session_address = s.address WHERE s.name = N'system_health' AND t.target_name = N'ring_buffer';",
         Status = "New"
     };
 }

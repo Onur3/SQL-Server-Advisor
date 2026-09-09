@@ -224,9 +224,9 @@ BEGIN
 END
 GO
 
-IF OBJECT_ID(N'SNP.Statistics', N'U') IS NULL
+IF OBJECT_ID(N'SNP.[Statistics]', N'U') IS NULL
 BEGIN
-    CREATE TABLE SNP.Statistics
+    CREATE TABLE SNP.[Statistics]
     (
         Id bigint IDENTITY(1,1) NOT NULL CONSTRAINT PK_SNP_Statistics PRIMARY KEY,
         ServerProfileId uniqueidentifier NOT NULL,
@@ -243,7 +243,7 @@ BEGIN
         SamplePercent decimal(9,4) NULL,
         CONSTRAINT FK_SNP_Statistics_Server FOREIGN KEY(ServerProfileId) REFERENCES ADM.Server(Id)
     );
-    CREATE INDEX IX_SNP_Statistics_ObjectCaptured ON SNP.Statistics(ServerProfileId, DatabaseName, ObjectId, CapturedAt DESC);
+    CREATE INDEX IX_SNP_Statistics_ObjectCaptured ON SNP.[Statistics](ServerProfileId, DatabaseName, ObjectId, CapturedAt DESC);
 END
 GO
 

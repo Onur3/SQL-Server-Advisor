@@ -16,6 +16,10 @@ export interface QueryPerformance {
   averageLogicalReads: number;
   totalLogicalWrites: number;
   impactScore: number;
+  diagnosticLevel: string;
+  diagnosticHeadline: string;
+  diagnosticSummary: string;
+  suggestedInspection: string;
   lastExecutionTime?: string | null;
   capturedAt: string;
   planId?: number | null;

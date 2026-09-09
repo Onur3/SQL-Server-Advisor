@@ -12,58 +12,82 @@ import { MatIconModule } from '@angular/material/icon';
   template: `
     <mat-sidenav-container class="shell">
       <mat-sidenav mode="side" opened class="sidebar">
-        <div class="brand">
-          <div class="brand-mark">SQL</div>
+        <a class="brand" routerLink="/">
+          <div class="brand-mark"><mat-icon>storage</mat-icon></div>
           <div>
-            <strong>Server Advisor</strong>
-            <small>Performance & Health</small>
+            <strong>SQL Server Advisor</strong>
+            <small>Performans Karar Destek Sistemi</small>
           </div>
-        </div>
+        </a>
+
+        <div class="nav-section">GENEL</div>
         <mat-nav-list>
           <a mat-list-item routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact:true}">
-            <mat-icon matListItemIcon>dashboard</mat-icon><span matListItemTitle>Dashboard</span>
+            <mat-icon matListItemIcon>space_dashboard</mat-icon><span matListItemTitle>Genel Bakış</span>
           </a>
           <a mat-list-item routerLink="/servers" routerLinkActive="active">
             <mat-icon matListItemIcon>dns</mat-icon><span matListItemTitle>SQL Sunucuları</span>
           </a>
+        </mat-nav-list>
+
+        <div class="nav-section">PERFORMANS ANALİZİ</div>
+        <mat-nav-list>
           <a mat-list-item routerLink="/telemetry" routerLinkActive="active">
-            <mat-icon matListItemIcon>monitor_heart</mat-icon><span matListItemTitle>Wait & Blocking</span>
+            <mat-icon matListItemIcon>monitor_heart</mat-icon><span matListItemTitle>Beklemeler & Kilitler</span>
           </a>
           <a mat-list-item routerLink="/queries" routerLinkActive="active">
-            <mat-icon matListItemIcon>query_stats</mat-icon><span matListItemTitle>Sorgular</span>
+            <mat-icon matListItemIcon>query_stats</mat-icon><span matListItemTitle>Pahalı Sorgular</span>
           </a>
           <a mat-list-item routerLink="/indexes" routerLinkActive="active">
-            <mat-icon matListItemIcon>account_tree</mat-icon><span matListItemTitle>Index Advisor</span>
+            <mat-icon matListItemIcon>account_tree</mat-icon><span matListItemTitle>İndeks Analizi</span>
           </a>
           <a mat-list-item routerLink="/statistics" routerLinkActive="active">
-            <mat-icon matListItemIcon>analytics</mat-icon><span matListItemTitle>Statistics</span>
+            <mat-icon matListItemIcon>analytics</mat-icon><span matListItemTitle>İstatistikler</span>
           </a>
+        </mat-nav-list>
+
+        <div class="nav-section">AKSİYON MERKEZİ</div>
+        <mat-nav-list>
           <a mat-list-item routerLink="/findings" routerLinkActive="active">
-            <mat-icon matListItemIcon>rule</mat-icon><span matListItemTitle>Bulgular</span>
+            <mat-icon matListItemIcon>problem</mat-icon><span matListItemTitle>Bulgular</span>
           </a>
           <a mat-list-item routerLink="/recommendations" routerLinkActive="active">
             <mat-icon matListItemIcon>tips_and_updates</mat-icon><span matListItemTitle>Öneriler</span>
           </a>
         </mat-nav-list>
+
+        <div class="readonly-card">
+          <mat-icon>shield</mat-icon>
+          <div><strong>Salt okunur izleme</strong><small>Advisor üretim SQL'inde otomatik değişiklik yapmaz.</small></div>
+        </div>
       </mat-sidenav>
+
       <mat-sidenav-content>
         <mat-toolbar class="topbar">
-          <span>SQL Server Advisor</span>
+          <div>
+            <strong>SQL Server Advisor</strong>
+            <small>Veri → Bulgu → Öneri → DBA Aksiyonu</small>
+          </div>
           <span class="spacer"></span>
-          <span class="read-only">READ ONLY MONITORING</span>
+          <span class="read-only"><mat-icon>visibility</mat-icon> READ ONLY</span>
         </mat-toolbar>
         <main class="content"><router-outlet /></main>
       </mat-sidenav-content>
     </mat-sidenav-container>
   `,
   styles: [`
-    .shell{height:100vh}.sidebar{width:250px;border-right:1px solid #e4e8f0;background:#111827;color:#fff}
-    .brand{display:flex;gap:12px;align-items:center;padding:22px 18px;border-bottom:1px solid rgba(255,255,255,.09)}
-    .brand-mark{width:42px;height:42px;border-radius:10px;display:grid;place-items:center;background:#3157d5;font-weight:800}
-    .brand strong,.brand small{display:block}.brand small{color:#93a0b8;margin-top:2px;font-size:.72rem}
-    .sidebar a{color:#cad2e2;margin:5px 8px;border-radius:9px}.sidebar a.active{background:#25324a;color:#fff}.sidebar a.disabled{opacity:.5}
-    .topbar{height:64px;background:#fff;border-bottom:1px solid #e4e8f0;color:#1d2738}.spacer{flex:1}.read-only{font-size:.72rem;letter-spacing:.09em;color:#64748b;border:1px solid #dbe2ec;padding:6px 9px;border-radius:7px}
-    .content{padding:26px;max-width:1600px;margin:0 auto}
+    .shell{height:100vh;background:#f3f6fb}.sidebar{width:278px;border:0;background:#0f172a;color:#fff;padding-bottom:18px}
+    .brand{display:flex;gap:12px;align-items:center;padding:22px 18px 20px;border-bottom:1px solid rgba(255,255,255,.08);color:#fff}
+    .brand-mark{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(145deg,#4568e7,#273fb3);box-shadow:0 8px 22px rgba(49,87,213,.28)}
+    .brand-mark mat-icon{color:#fff}.brand strong,.brand small{display:block}.brand strong{font-size:.96rem}.brand small{color:#8fa0bc;margin-top:3px;font-size:.68rem;line-height:1.3}
+    .nav-section{padding:20px 18px 7px;color:#64748b;font-size:.62rem;font-weight:800;letter-spacing:.12em}
+    mat-nav-list{padding-top:0}.sidebar a[mat-list-item]{margin:3px 10px;border-radius:10px;min-height:46px}.sidebar a.active{background:rgba(80,104,230,.18)}
+    .readonly-card{margin:22px 14px 0;padding:12px;display:flex;gap:10px;align-items:flex-start;border:1px solid rgba(148,163,184,.18);border-radius:12px;background:rgba(15,23,42,.42)}
+    .readonly-card mat-icon{font-size:19px;width:19px;height:19px;color:#5ee3aa}.readonly-card strong,.readonly-card small{display:block}.readonly-card strong{font-size:.72rem;color:#dce6f5}.readonly-card small{margin-top:3px;font-size:.64rem;line-height:1.4;color:#7f91ad}
+    .topbar{height:68px;background:#fff;border-bottom:1px solid #e2e8f0;color:#172033;padding:0 28px}.topbar strong,.topbar small{display:block}.topbar strong{font-size:.95rem}.topbar small{margin-top:2px;color:#8591a4;font-size:.67rem}.spacer{flex:1}
+    .read-only{display:flex;align-items:center;gap:6px;font-size:.68rem;font-weight:800;letter-spacing:.07em;color:#16734b;background:#eaf8f1;border:1px solid #caebda;padding:7px 10px;border-radius:999px}.read-only mat-icon{font-size:16px;width:16px;height:16px}
+    .content{padding:28px;max-width:1680px;margin:0 auto}
+    @media(max-width:900px){.sidebar{width:230px}.content{padding:18px}.topbar{padding:0 18px}.topbar small{display:none}}
   `]
 })
 export class AppComponent {}

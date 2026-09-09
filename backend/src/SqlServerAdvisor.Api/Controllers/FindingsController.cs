@@ -16,19 +16,19 @@ public sealed class FindingsController(AdvisorDbContext db) : ControllerBase
         [FromQuery] string? status,
         CancellationToken cancellationToken)
     {
-        var query =
+        var source =
             from finding in db.Findings.AsNoTracking()
             join server in db.Servers.AsNoTracking()
                 on finding.ServerProfileId equals server.Id
             select new { finding, ServerName = server.Name };
 
         if (serverId.HasValue)
-            query = query.Where(x => x.finding.ServerProfileId == serverId.Value);
+            source = source.Where(x => x.finding.ServerProfileId == serverId.Value);
 
         if (!string.IsNullOrWhiteSpace(status) && !status.Equals("All", StringComparison.OrdinalIgnoreCase))
-            query = query.Where(x => x.finding.Status == status);
+            source = source.Where(x => x.finding.Status == status);
 
-        var rows = await query
+        var rows = await source
             .OrderByDescending(x => x.finding.Status == "Open")
             .ThenByDescending(x => x.finding.Severity)
             .ThenByDescending(x => x.finding.FindingScore)
@@ -36,17 +36,47 @@ public sealed class FindingsController(AdvisorDbContext db) : ControllerBase
             .Take(500)
             .ToListAsync(cancellationToken);
 
+        var queryIds = rows
+            .Where(x => x.finding.QueryId.HasValue)
+            .Select(x => x.finding.QueryId!.Value)
+            .Distinct()
+            .ToArray();
+
+        var queryDefinitions = queryIds.Length == 0
+            ? new Dictionary<long, SqlServerAdvisor.Domain.Entities.QueryDefinition>()
+            : await db.Queries.AsNoTracking()
+                .Where(x => queryIds.Contains(x.Id))
+                .ToDictionaryAsync(x => x.Id, cancellationToken);
+
+        var planQueryIds = queryIds.Length == 0
+            ? new HashSet<long>()
+            : (await db.QueryPlans.AsNoTracking()
+                .Where(x => queryIds.Contains(x.QueryId))
+                .Select(x => x.QueryId)
+                .Distinct()
+                .ToListAsync(cancellationToken))
+                .ToHashSet();
+
         var items = rows.Select(x =>
         {
             var narrative = AdvisorNarrativeCatalog.For(x.finding.RuleId);
+            queryDefinitions.TryGetValue(x.finding.QueryId ?? 0, out var queryDefinition);
+
+            var effectiveDatabase = NormalizeDatabase(x.finding.DatabaseName ?? queryDefinition?.DatabaseName);
+            var effectiveObject = x.finding.ObjectName ?? queryDefinition?.ObjectName;
+            var queryText = queryDefinition is null ? null : Truncate(queryDefinition.StatementText, 6000);
+
             return new FindingListItemDto(
                 x.finding.Id,
                 x.finding.ServerProfileId,
                 x.ServerName,
                 x.finding.QueryId,
-                x.finding.DatabaseName,
-                x.finding.ObjectName,
-                AdvisorNarrativeCatalog.BuildScope(x.ServerName, x.finding.DatabaseName, x.finding.ObjectName),
+                queryDefinition?.QueryHash,
+                queryText,
+                x.finding.QueryId.HasValue && planQueryIds.Contains(x.finding.QueryId.Value),
+                effectiveDatabase,
+                effectiveObject,
+                AdvisorNarrativeCatalog.BuildScope(x.ServerName, effectiveDatabase, effectiveObject),
                 x.finding.RuleId,
                 narrative.RuleName,
                 x.finding.Category,
@@ -70,4 +100,14 @@ public sealed class FindingsController(AdvisorDbContext db) : ControllerBase
 
         return Ok(items);
     }
+
+    private static string? NormalizeDatabase(string? value) =>
+        string.IsNullOrWhiteSpace(value) ||
+        value.Contains("Ad-hoc", StringComparison.OrdinalIgnoreCase) ||
+        value.Contains("bağlamı yok", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : value;
+
+    private static string Truncate(string value, int maxLength) =>
+        value.Length <= maxLength ? value : value[..maxLength] + "\n-- ... kısaltıldı";
 }

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SqlServerAdvisor.Application.DTOs;
+using SqlServerAdvisor.Application.Presentation;
 using SqlServerAdvisor.Infrastructure.Data;
 
 namespace SqlServerAdvisor.Api.Controllers;
@@ -42,24 +43,39 @@ public sealed class IndexesController(AdvisorDbContext db) : ControllerBase
             .Where(x => serverIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, x => x.Name, cancellationToken);
 
-        return Ok(latest.Select(x => new FragmentedIndexDto(
-            x.Id,
-            x.ServerProfileId,
-            servers.GetValueOrDefault(x.ServerProfileId, x.ServerProfileId.ToString()),
-            x.DatabaseName,
-            x.TableName,
-            x.IndexName,
-            x.TypeDesc,
-            x.KeyColumns,
-            x.IncludeColumns,
-            x.SizeMb,
-            x.UserSeeks,
-            x.UserScans,
-            x.UserLookups,
-            x.UserUpdates,
-            x.AvgFragmentationPercent,
-            x.PageCount,
-            x.CapturedAt)).ToList());
+        return Ok(latest.Select(x =>
+        {
+            var interpretation = IndexInterpretation.BuildFragmentation(
+                x.AvgFragmentationPercent ?? 0m,
+                x.PageCount ?? 0,
+                x.SizeMb,
+                x.UserSeeks,
+                x.UserScans,
+                x.UserUpdates);
+
+            return new FragmentedIndexDto(
+                x.Id,
+                x.ServerProfileId,
+                servers.GetValueOrDefault(x.ServerProfileId, x.ServerProfileId.ToString()),
+                x.DatabaseName,
+                x.TableName,
+                x.IndexName,
+                x.TypeDesc,
+                x.KeyColumns,
+                x.IncludeColumns,
+                x.SizeMb,
+                x.UserSeeks,
+                x.UserScans,
+                x.UserLookups,
+                x.UserUpdates,
+                x.AvgFragmentationPercent,
+                x.PageCount,
+                interpretation.Level,
+                interpretation.Headline,
+                interpretation.Summary,
+                interpretation.SuggestedInspection,
+                x.CapturedAt);
+        }).ToList());
     }
 
     [HttpGet("missing")]
@@ -92,20 +108,33 @@ public sealed class IndexesController(AdvisorDbContext db) : ControllerBase
             .Where(x => serverIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, x => x.Name, cancellationToken);
 
-        return Ok(latest.Select(x => new MissingIndexDto(
-            x.Id,
-            x.ServerProfileId,
-            servers.GetValueOrDefault(x.ServerProfileId, x.ServerProfileId.ToString()),
-            x.DatabaseName,
-            x.TableName,
-            x.EqualityColumns,
-            x.InequalityColumns,
-            x.IncludedColumns,
-            x.UserSeeks,
-            x.UserScans,
-            x.AvgTotalUserCost,
-            x.AvgUserImpact,
-            x.ImprovementMeasure,
-            x.CapturedAt)).ToList());
+        return Ok(latest.Select(x =>
+        {
+            var interpretation = IndexInterpretation.BuildMissing(
+                x.UserSeeks,
+                x.UserScans,
+                x.AvgUserImpact,
+                x.ImprovementMeasure);
+
+            return new MissingIndexDto(
+                x.Id,
+                x.ServerProfileId,
+                servers.GetValueOrDefault(x.ServerProfileId, x.ServerProfileId.ToString()),
+                x.DatabaseName,
+                x.TableName,
+                x.EqualityColumns,
+                x.InequalityColumns,
+                x.IncludedColumns,
+                x.UserSeeks,
+                x.UserScans,
+                x.AvgTotalUserCost,
+                x.AvgUserImpact,
+                x.ImprovementMeasure,
+                interpretation.Level,
+                interpretation.Headline,
+                interpretation.Summary,
+                interpretation.SuggestedInspection,
+                x.CapturedAt);
+        }).ToList());
     }
 }

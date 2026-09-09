@@ -13,6 +13,9 @@ export interface FragmentedIndex {
   userScans: number;
   userLookups: number;
   userUpdates: number;
+  hasFilter: boolean;
+  filterDefinition?: string | null;
+  usageSinceDays: number;
   avgFragmentationPercent?: number | null;
   pageCount?: number | null;
   diagnosticLevel: string;
@@ -36,6 +39,7 @@ export interface MissingIndexCandidate {
   avgTotalUserCost: number;
   avgUserImpact: number;
   improvementMeasure: number;
+  coveredByExistingIndex: boolean;
   diagnosticLevel: string;
   diagnosticHeadline: string;
   diagnosticSummary: string;

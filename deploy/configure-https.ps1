@@ -40,7 +40,7 @@ function Test-DnsNameMatch([string]$Pattern, [string]$DnsName) {
     }
 
     if ($Pattern.StartsWith('*.')) {
-        $suffix = $Pattern.Substring(1) # .example.com
+        $suffix = $Pattern.Substring(1)
         if (-not $DnsName.EndsWith($suffix, [StringComparison]::OrdinalIgnoreCase)) {
             return $false
         }
@@ -134,6 +134,15 @@ if ($null -eq $binding) {
 
 $binding.AddSslCertificate($certificate.Thumbprint, 'My')
 
+$firewallRuleName = "SQL Server Advisor HTTPS $HttpsPort"
+$firewallRule = Get-NetFirewallRule -DisplayName $firewallRuleName -ErrorAction SilentlyContinue
+if ($null -eq $firewallRule) {
+    New-NetFirewallRule -DisplayName $firewallRuleName -Direction Inbound -Action Allow -Protocol TCP -LocalPort $HttpsPort -Profile Any | Out-Null
+}
+else {
+    Enable-NetFirewallRule -DisplayName $firewallRuleName | Out-Null
+}
+
 if ($RemoveHttpBinding) {
     Get-WebBinding -Name $SiteName -Protocol 'http' -ErrorAction SilentlyContinue |
         ForEach-Object {
@@ -148,6 +157,7 @@ Write-Host "`nHTTPS binding tamamlandi." -ForegroundColor Green
 Write-Host "URL        : https://${HostName}:$HttpsPort"
 Write-Host "IIS Site   : $SiteName"
 Write-Host "Certificate: $($certificate.Thumbprint)"
+Write-Host "Firewall   : TCP $HttpsPort inbound acik"
 if ($RemoveHttpBinding) {
     Write-Host 'HTTP binding : kaldirildi'
 }

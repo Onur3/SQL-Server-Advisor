@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SqlServerAdvisor.Application.DTOs;
+using SqlServerAdvisor.Application.Presentation;
 using SqlServerAdvisor.Infrastructure.Data;
 
 namespace SqlServerAdvisor.Api.Controllers;
@@ -41,19 +42,36 @@ public sealed class StatisticsController(AdvisorDbContext db) : ControllerBase
             .Where(x => serverIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, x => x.Name, cancellationToken);
 
-        return Ok(latest.Select(x => new StatisticsStatusDto(
-            x.Id,
-            x.ServerProfileId,
-            servers.GetValueOrDefault(x.ServerProfileId, x.ServerProfileId.ToString()),
-            x.DatabaseName,
-            x.TableName,
-            x.StatisticsName,
-            x.Rows,
-            x.RowsSampled,
-            x.ModificationCounter,
-            x.Rows == 0 ? 0m : Math.Round(x.ModificationCounter * 100m / x.Rows, 2),
-            x.LastUpdated,
-            x.SamplePercent,
-            x.CapturedAt)).ToList());
+        var now = DateTimeOffset.UtcNow;
+        return Ok(latest.Select(x =>
+        {
+            var modificationPercent = x.Rows == 0 ? 0m : Math.Round(x.ModificationCounter * 100m / x.Rows, 2);
+            var interpretation = StatisticsInterpretation.Build(
+                x.Rows,
+                x.RowsSampled,
+                modificationPercent,
+                x.LastUpdated,
+                x.SamplePercent,
+                now);
+
+            return new StatisticsStatusDto(
+                x.Id,
+                x.ServerProfileId,
+                servers.GetValueOrDefault(x.ServerProfileId, x.ServerProfileId.ToString()),
+                x.DatabaseName,
+                x.TableName,
+                x.StatisticsName,
+                x.Rows,
+                x.RowsSampled,
+                x.ModificationCounter,
+                modificationPercent,
+                x.LastUpdated,
+                x.SamplePercent,
+                interpretation.Level,
+                interpretation.Headline,
+                interpretation.Summary,
+                interpretation.SuggestedInspection,
+                x.CapturedAt);
+        }).ToList());
     }
 }

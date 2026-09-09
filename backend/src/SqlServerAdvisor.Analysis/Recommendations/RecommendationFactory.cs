@@ -14,6 +14,7 @@ public sealed class RecommendationFactory : IRecommendationFactory
             "CPU-001" => CreateCpuRecommendation(finding),
             "MEM-001" => CreateMemoryRecommendation(finding),
             "WAIT-001" => CreateWaitRecommendation(finding),
+            "QRY-001" => CreateQueryRecommendation(finding),
             _ => null
         };
 
@@ -75,6 +76,19 @@ public sealed class RecommendationFactory : IRecommendationFactory
         ConfidenceScore = finding.ConfidenceScore,
         RecommendedAction = "Önce son örnekleme aralığındaki wait artışını doğrulayın. Ardından ilgili kaynak grubuna göre sorguları, dosya I/O gecikmesini, blocking zincirlerini veya memory grant durumunu inceleyin. SQL Server Advisor üretim ayarı veya indeks değişikliğini otomatik uygulamaz.",
         ScriptText = "SELECT TOP (30) wait_type, waiting_tasks_count, wait_time_ms, signal_wait_time_ms, wait_time_ms - signal_wait_time_ms AS resource_wait_ms FROM sys.dm_os_wait_stats WHERE wait_time_ms > 0 ORDER BY wait_time_ms DESC;",
+        Status = "New"
+    };
+
+    private static Recommendation CreateQueryRecommendation(Finding finding) => new()
+    {
+        PriorityScore = finding.FindingScore,
+        Title = "Sorgunun execution plan ve veri erişim maliyetini inceleyin",
+        Explanation = "Sorgu plan cache ölçümlerinde yüksek ortalama CPU, süre veya logical read tüketimi gösteriyor. Bu bir tuning adayıdır; doğrudan indeks oluşturma veya query hint uygulama gerekçesi değildir.",
+        ExpectedBenefit = "High",
+        RiskLevel = "Low",
+        ConfidenceScore = finding.ConfidenceScore,
+        RecommendedAction = "Execution plan üzerinde scan/seek tercihlerini, cardinality tahminlerini, key lookup maliyetini, sort/hash spill işaretlerini ve parameter sensitivity davranışını inceleyin. İndeks veya sorgu değişikliğini test ortamında doğrulayıp DBA onayıyla uygulayın.",
+        ScriptText = "SELECT TOP (50) CONVERT(varchar(130), qs.query_hash, 1) AS query_hash, qs.execution_count, qs.total_worker_time/1000.0 AS total_cpu_ms, (qs.total_worker_time/NULLIF(qs.execution_count,0))/1000.0 AS avg_cpu_ms, (qs.total_elapsed_time/NULLIF(qs.execution_count,0))/1000.0 AS avg_duration_ms, qs.total_logical_reads*1.0/NULLIF(qs.execution_count,0) AS avg_logical_reads, DB_NAME(st.dbid) AS database_name, st.text, qp.query_plan FROM sys.dm_exec_query_stats qs CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) st OUTER APPLY sys.dm_exec_query_plan(qs.plan_handle) qp ORDER BY qs.total_worker_time DESC;",
         Status = "New"
     };
 }

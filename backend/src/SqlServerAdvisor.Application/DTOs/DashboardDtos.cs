@@ -12,7 +12,11 @@ public sealed record DashboardServerDto(
     int ActiveRequests,
     int BlockedRequests,
     decimal? HealthScore,
-    int DataCoveragePercent);
+    int DataCoveragePercent,
+    int OpenFindingCount,
+    int HighFindingCount,
+    int CriticalFindingCount,
+    decimal? TopFindingScore);
 
 public sealed record WorkerStatusDto(
     bool Online,

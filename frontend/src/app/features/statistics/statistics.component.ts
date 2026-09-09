@@ -4,7 +4,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { switchMap, timer } from 'rxjs';
+import { forkJoin, switchMap, timer } from 'rxjs';
+import { CollectorCoverage } from '../../core/models/collector.models';
 import { StatisticsStatus } from '../../core/models/statistics.models';
 import { AdvisorApiService } from '../../core/services/advisor-api.service';
 
@@ -20,6 +21,22 @@ import { AdvisorApiService } from '../../core/services/advisor-api.service';
       </div>
       <div class="readonly"><mat-icon>visibility</mat-icon> UPDATE STATISTICS otomatik çalıştırılmaz</div>
     </div>
+
+    @if (coverageWarnings().length) {
+      <div class="coverage-warning">
+        <mat-icon>database</mat-icon>
+        <div>
+          <strong>Statistics analizi tüm veritabanlarını kapsamıyor</strong>
+          <p>Monitoring hesabının bazı veritabanlarında metadata/DMV yetkisi yok. Bu DB'lerin statistics kayıtları sonuçlarda eksik olabilir.</p>
+          @for (row of coverageWarnings(); track row.serverProfileId) {
+            <details>
+              <summary>{{ row.serverName }} · ayrıntıyı göster</summary>
+              <pre>{{ row.warningMessage }}</pre>
+            </details>
+          }
+        </div>
+      </div>
+    }
 
     @if (loading()) {
       <div class="loading"><mat-spinner diameter="38" /></div>
@@ -79,7 +96,7 @@ import { AdvisorApiService } from '../../core/services/advisor-api.service';
     }
   `,
   styles: [`
-    .heading{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:20px}.readonly{display:flex;align-items:center;gap:6px;border:1px solid #dbe2ec;border-radius:999px;padding:7px 10px;color:#64748b;font-size:.7rem;background:#fff}.readonly mat-icon{font-size:16px;width:16px;height:16px}.loading{height:240px;display:grid;place-items:center}.empty{min-height:240px;display:grid;place-items:center;text-align:center;padding:40px}.empty mat-icon{font-size:42px;width:42px;height:42px;color:#64748b}.empty h3,.empty p{margin:0}.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}.summary mat-card{padding:14px 16px;border:1px solid #e2e7ef;box-shadow:none}.summary span{display:block;color:#778297;font-size:.68rem}.summary strong{display:block;margin-top:5px;font-size:1.13rem}.summary small{display:block;margin-top:3px;color:#9aa4b4;font-size:.6rem}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:14px}.card{padding:17px;border:1px solid #e1e7f0;border-radius:15px;box-shadow:0 7px 24px rgba(15,23,42,.045)}.card.no-recompute{border-color:#f0c8c8}.head{display:flex;justify-content:space-between;gap:14px}.head strong,.head>div>span{display:block}.head strong{margin-top:4px;font-size:.82rem}.head>div>span{font-size:.71rem;color:#748196;margin-top:3px}.scope{display:flex;align-items:center;gap:5px;color:#8290a3;font-size:.64rem}.scope mat-icon{font-size:14px;width:14px;height:14px}.badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.badges span{display:flex;align-items:center;gap:3px;border-radius:999px;padding:4px 7px;font-size:.58rem;font-weight:750}.badges mat-icon{font-size:13px;width:13px;height:13px}.badges .type{background:#edf1f7;color:#536279}.badges .danger{background:#ffe8e8;color:#a32b2b}.badges .filter{background:#e9efff;color:#3157a4}.badges .sample{background:#fff3df;color:#986000}.level{background:#edf2f7;color:#536174;border-radius:9px;height:max-content;padding:7px 9px;font-weight:780}.level.medium{background:#fff5dd;color:#986700}.level.high{background:#ffeded;color:#aa3030}.diagnostic{margin-top:12px;padding:11px 12px;border:1px solid #dfe6f7;background:#f7f9ff;border-radius:10px}.diagnostic.high{background:#fff9f1;border-color:#f0dfca}.diagnostic-title{display:flex;align-items:center;gap:5px;color:#344d77;font-size:.7rem;font-weight:800}.diagnostic-title mat-icon{font-size:17px;width:17px;height:17px}.diagnostic p{margin:6px 0;color:#526177;font-size:.73rem;line-height:1.45}.inspect{display:flex;align-items:flex-start;gap:5px;color:#35506e;font-size:.68rem;font-weight:650}.inspect mat-icon{font-size:15px;width:15px;height:15px;color:#21805a}.metrics{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid #edf0f5;border-bottom:1px solid #edf0f5;margin:13px 0}.metrics div{text-align:center;padding:9px 5px;border-right:1px solid #edf0f5}.metrics div:last-child{border:0}.metrics span{display:block;color:#778297;font-size:.61rem}.metrics strong{font-size:.77rem}.dates{display:flex;justify-content:space-between;gap:10px;font-size:.65rem;color:#8490a2}.dates span,.dates strong{display:block}.dates strong{color:#4e5c70;margin-top:2px;font-size:.68rem}details{margin-top:11px;font-size:.68rem;color:#59687d}summary{cursor:pointer;font-weight:700}details code{display:block;margin-top:7px;padding:8px;background:#f5f7fa;border-radius:7px;white-space:normal;word-break:break-word}@media(max-width:900px){.summary{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.heading,.dates{display:block}.metrics{grid-template-columns:repeat(3,1fr)}}
+    .heading{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:20px}.readonly{display:flex;align-items:center;gap:6px;border:1px solid #dbe2ec;border-radius:999px;padding:7px 10px;color:#64748b;font-size:.7rem;background:#fff}.readonly mat-icon{font-size:16px;width:16px;height:16px}.coverage-warning{display:flex;gap:11px;margin:-5px 0 18px;padding:13px 15px;border:1px solid #f2d5a2;background:#fff8e8;border-radius:12px;color:#744b00}.coverage-warning>mat-icon{margin-top:1px}.coverage-warning strong{font-size:.8rem}.coverage-warning p{margin:4px 0 7px;font-size:.7rem;color:#81632a}.coverage-warning details{margin-top:5px}.coverage-warning summary{cursor:pointer;font-size:.68rem;font-weight:700}.coverage-warning pre{white-space:pre-wrap;margin:6px 0 0;padding:8px 9px;background:#fff;border:1px solid #f1dfbd;border-radius:7px;color:#6a542d;font-size:.65rem}.loading{height:240px;display:grid;place-items:center}.empty{min-height:240px;display:grid;place-items:center;text-align:center;padding:40px}.empty mat-icon{font-size:42px;width:42px;height:42px;color:#64748b}.empty h3,.empty p{margin:0}.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}.summary mat-card{padding:14px 16px;border:1px solid #e2e7ef;box-shadow:none}.summary span{display:block;color:#778297;font-size:.68rem}.summary strong{display:block;margin-top:5px;font-size:1.13rem}.summary small{display:block;margin-top:3px;color:#9aa4b4;font-size:.6rem}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:14px}.card{padding:17px;border:1px solid #e1e7f0;border-radius:15px;box-shadow:0 7px 24px rgba(15,23,42,.045)}.card.no-recompute{border-color:#f0c8c8}.head{display:flex;justify-content:space-between;gap:14px}.head strong,.head>div>span{display:block}.head strong{margin-top:4px;font-size:.82rem}.head>div>span{font-size:.71rem;color:#748196;margin-top:3px}.scope{display:flex;align-items:center;gap:5px;color:#8290a3;font-size:.64rem}.scope mat-icon{font-size:14px;width:14px;height:14px}.badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.badges span{display:flex;align-items:center;gap:3px;border-radius:999px;padding:4px 7px;font-size:.58rem;font-weight:750}.badges mat-icon{font-size:13px;width:13px;height:13px}.badges .type{background:#edf1f7;color:#536279}.badges .danger{background:#ffe8e8;color:#a32b2b}.badges .filter{background:#e9efff;color:#3157a4}.badges .sample{background:#fff3df;color:#986000}.level{background:#edf2f7;color:#536174;border-radius:9px;height:max-content;padding:7px 9px;font-weight:780}.level.medium{background:#fff5dd;color:#986700}.level.high{background:#ffeded;color:#aa3030}.diagnostic{margin-top:12px;padding:11px 12px;border:1px solid #dfe6f7;background:#f7f9ff;border-radius:10px}.diagnostic.high{background:#fff9f1;border-color:#f0dfca}.diagnostic-title{display:flex;align-items:center;gap:5px;color:#344d77;font-size:.7rem;font-weight:800}.diagnostic-title mat-icon{font-size:17px;width:17px;height:17px}.diagnostic p{margin:6px 0;color:#526177;font-size:.73rem;line-height:1.45}.inspect{display:flex;align-items:flex-start;gap:5px;color:#35506e;font-size:.68rem;font-weight:650}.inspect mat-icon{font-size:15px;width:15px;height:15px;color:#21805a}.metrics{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid #edf0f5;border-bottom:1px solid #edf0f5;margin:13px 0}.metrics div{text-align:center;padding:9px 5px;border-right:1px solid #edf0f5}.metrics div:last-child{border:0}.metrics span{display:block;color:#778297;font-size:.61rem}.metrics strong{font-size:.77rem}.dates{display:flex;justify-content:space-between;gap:10px;font-size:.65rem;color:#8490a2}.dates span,.dates strong{display:block}.dates strong{color:#4e5c70;margin-top:2px;font-size:.68rem}details{margin-top:11px;font-size:.68rem;color:#59687d}summary{cursor:pointer;font-weight:700}details code{display:block;margin-top:7px;padding:8px;background:#f5f7fa;border-radius:7px;white-space:normal;word-break:break-word}@media(max-width:900px){.summary{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.heading,.dates{display:block}.metrics{grid-template-columns:repeat(3,1fr)}}
   `]
 })
 export class StatisticsComponent implements OnInit {
@@ -87,14 +104,23 @@ export class StatisticsComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly items = signal<StatisticsStatus[]>([]);
+  readonly coverage = signal<CollectorCoverage[]>([]);
   readonly loading = signal(true);
+  readonly coverageWarnings = () => this.coverage().filter(x => x.status === 'Warning' || x.status === 'Failed');
 
   ngOnInit(): void {
     timer(0, 600_000).pipe(
-      switchMap(() => this.api.getStatisticsStatus(100)),
+      switchMap(() => forkJoin({
+        items: this.api.getStatisticsStatus(100),
+        coverage: this.api.getCollectorCoverage('StatisticsAdvisor')
+      })),
       takeUntilDestroyed(this.destroyRef)
     ).subscribe({
-      next: rows => { this.items.set(rows); this.loading.set(false); },
+      next: result => {
+        this.items.set(result.items);
+        this.coverage.set(result.coverage);
+        this.loading.set(false);
+      },
       error: () => this.loading.set(false)
     });
   }

@@ -22,7 +22,13 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-app.UseHttpsRedirection();
+if (builder.Configuration.GetValue("HttpsRedirection:Enabled", true))
+{
+    app.UseHttpsRedirection();
+}
+
+app.UseDefaultFiles();
+app.UseStaticFiles();
 app.UseCors("Angular");
 app.MapControllers();
 app.MapHub<AdvisorHub>("/hubs/advisor");
@@ -33,4 +39,10 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", utc = DateTimeOffset.UtcNow }));
+
+// Production deployment copies the Angular browser bundle into wwwroot.
+// API and SignalR endpoints are mapped first; every remaining browser route
+// falls back to Angular's index.html so IIS needs only one application/site.
+app.MapFallbackToFile("index.html");
+
 app.Run();

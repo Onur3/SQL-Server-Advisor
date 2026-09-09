@@ -15,6 +15,7 @@ public static class DependencyInjection
         services.AddSingleton<IServerHealthCollector, ServerHealthCollector>();
         services.AddSingleton<IAdvisorCollector, WaitBlockingCollector>();
         services.AddSingleton<IAdvisorCollector, QueryPerformanceCollector>();
+        services.AddSingleton<IAdvisorCollector, IndexAdvisorCollector>();
         return services;
     }
 }

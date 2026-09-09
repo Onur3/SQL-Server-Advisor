@@ -17,6 +17,7 @@ public sealed class RecommendationFactory : IRecommendationFactory
             "QRY-001" => CreateQueryRecommendation(finding),
             "IDX-001" => CreateFragmentationRecommendation(finding),
             "IDX-002" => CreateMissingIndexRecommendation(finding),
+            "STATS-001" => CreateStatisticsRecommendation(finding),
             _ => null
         };
 
@@ -117,6 +118,19 @@ public sealed class RecommendationFactory : IRecommendationFactory
         ConfidenceScore = finding.ConfidenceScore,
         RecommendedAction = "Önce aynı tablo üzerindeki mevcut indeksleri, key/include örtüşmesini, ilgili sorgu planlarını ve write yoğunluğunu inceleyin. Gerekirse tek bir konsolide indeks tasarımını test ortamında doğrulayın. Advisor otomatik CREATE INDEX çalıştırmaz.",
         ScriptText = "SELECT DB_NAME(mid.database_id) AS database_name, OBJECT_SCHEMA_NAME(mid.object_id, mid.database_id) AS schema_name, OBJECT_NAME(mid.object_id, mid.database_id) AS table_name, mid.equality_columns, mid.inequality_columns, mid.included_columns, migs.user_seeks, migs.user_scans, migs.avg_total_user_cost, migs.avg_user_impact FROM sys.dm_db_missing_index_details mid JOIN sys.dm_db_missing_index_groups mig ON mig.index_handle = mid.index_handle JOIN sys.dm_db_missing_index_group_stats migs ON migs.group_handle = mig.index_group_handle ORDER BY (migs.avg_total_user_cost * migs.avg_user_impact * (migs.user_seeks + migs.user_scans)) DESC;",
+        Status = "New"
+    };
+
+    private static Recommendation CreateStatisticsRecommendation(Finding finding) => new()
+    {
+        PriorityScore = finding.FindingScore,
+        Title = "Statistics güncelliğini ve sorgu planı etkisini doğrulayın",
+        Explanation = "Yüksek modification oranı ve statistics yaşı birlikte optimizer cardinality tahminlerini etkileyebilir. Ancak otomatik statistics davranışı ve gerçek plan etkisi doğrulanmadan UPDATE STATISTICS çalıştırılmamalıdır.",
+        ExpectedBenefit = "Medium",
+        RiskLevel = "Low",
+        ConfidenceScore = finding.ConfidenceScore,
+        RecommendedAction = "İlgili statistics kaydının last_updated, rows, rows_sampled ve modification_counter değerlerini sorgu planıyla birlikte inceleyin. Güncelleme gerekiyorsa bakım penceresi, sample oranı ve tablo büyüklüğü dikkate alınarak DBA tarafından uygulanmalıdır.",
+        ScriptText = "SELECT OBJECT_SCHEMA_NAME(s.object_id) AS schema_name, OBJECT_NAME(s.object_id) AS table_name, s.name AS statistics_name, p.last_updated, p.rows, p.rows_sampled, p.modification_counter FROM sys.stats s OUTER APPLY sys.dm_db_stats_properties(s.object_id, s.stats_id) p ORDER BY p.modification_counter DESC;",
         Status = "New"
     };
 }

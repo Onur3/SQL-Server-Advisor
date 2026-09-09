@@ -12,6 +12,7 @@ public static class DependencyInjection
         services.AddSingleton<IAnalysisRule, BlockingPressureRule>();
         services.AddSingleton<IAnalysisRule, HighSqlCpuRule>();
         services.AddSingleton<IAnalysisRule, LowAvailableMemoryRule>();
+        services.AddSingleton<ITelemetryAnalysisRule, WaitBlockingPressureRule>();
         services.AddSingleton<IRecommendationFactory, RecommendationFactory>();
         return services;
     }

@@ -191,7 +191,8 @@ public sealed class TelemetryWorker(
                     }
                 }
 
-                await ResolveInactiveFindingsAsync(db, server.Id, ruleIds, activeFingerprints, capturedAt, cancellationToken);
+                if (batch.Warnings.Count == 0)
+                    await ResolveInactiveFindingsAsync(db, server.Id, ruleIds, activeFingerprints, capturedAt, cancellationToken);
             }
 
             if (collector.Name.Equals("StatisticsAdvisor", StringComparison.OrdinalIgnoreCase) ||
@@ -218,7 +219,8 @@ public sealed class TelemetryWorker(
                     }
                 }
 
-                await ResolveInactiveFindingsAsync(db, server.Id, ruleIds, activeFingerprints, capturedAt, cancellationToken);
+                if (batch.Warnings.Count == 0)
+                    await ResolveInactiveFindingsAsync(db, server.Id, ruleIds, activeFingerprints, capturedAt, cancellationToken);
             }
 
             await db.SaveChangesAsync(cancellationToken);

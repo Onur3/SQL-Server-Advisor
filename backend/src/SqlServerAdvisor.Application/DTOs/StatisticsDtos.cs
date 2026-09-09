@@ -13,4 +13,8 @@ public sealed record StatisticsStatusDto(
     decimal ModificationPercent,
     DateTime? LastUpdated,
     decimal? SamplePercent,
+    string DiagnosticLevel,
+    string DiagnosticHeadline,
+    string DiagnosticSummary,
+    string SuggestedInspection,
     DateTimeOffset CapturedAt);

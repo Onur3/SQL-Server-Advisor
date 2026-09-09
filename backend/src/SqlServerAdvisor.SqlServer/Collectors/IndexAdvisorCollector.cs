@@ -67,11 +67,15 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
             i.is_unique AS IsUnique,
             i.is_primary_key AS IsPrimaryKey,
             i.is_disabled AS IsDisabled,
+            i.has_filter AS HasFilter,
+            i.filter_definition AS FilterDefinition,
+            DATEDIFF(day, osi.sqlserver_start_time, SYSDATETIME()) AS UsageSinceDays,
             ips.AvgFragmentationPercent,
             ips.PageCount
         FROM sys.indexes i
         JOIN sys.tables t ON t.object_id = i.object_id
         JOIN ips ON ips.object_id = i.object_id AND ips.index_id = i.index_id
+        CROSS JOIN sys.dm_os_sys_info AS osi
         LEFT JOIN sys.dm_db_index_usage_stats us
           ON us.database_id = DB_ID()
          AND us.object_id = i.object_id

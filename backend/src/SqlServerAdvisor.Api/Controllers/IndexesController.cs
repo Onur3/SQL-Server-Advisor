@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SqlServerAdvisor.Application.DTOs;
 using SqlServerAdvisor.Application.Presentation;
+using SqlServerAdvisor.Domain.Entities;
 using SqlServerAdvisor.Infrastructure.Data;
 
 namespace SqlServerAdvisor.Api.Controllers;
@@ -51,7 +52,10 @@ public sealed class IndexesController(AdvisorDbContext db) : ControllerBase
                 x.SizeMb,
                 x.UserSeeks,
                 x.UserScans,
-                x.UserUpdates);
+                x.UserLookups,
+                x.UserUpdates,
+                x.UsageSinceDays,
+                x.HasFilter);
 
             return new FragmentedIndexDto(
                 x.Id,
@@ -68,6 +72,9 @@ public sealed class IndexesController(AdvisorDbContext db) : ControllerBase
                 x.UserScans,
                 x.UserLookups,
                 x.UserUpdates,
+                x.HasFilter,
+                x.FilterDefinition,
+                x.UsageSinceDays,
                 x.AvgFragmentationPercent,
                 x.PageCount,
                 interpretation.Level,
@@ -108,13 +115,29 @@ public sealed class IndexesController(AdvisorDbContext db) : ControllerBase
             .Where(x => serverIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, x => x.Name, cancellationToken);
 
+        var coverageIndexes = new List<IndexSnapshot>();
+        foreach (var currentServerId in serverIds)
+        {
+            var latestCapturedAt = await db.IndexSnapshots.AsNoTracking()
+                .Where(x => x.ServerProfileId == currentServerId)
+                .MaxAsync(x => (DateTimeOffset?)x.CapturedAt, cancellationToken);
+
+            if (!latestCapturedAt.HasValue) continue;
+
+            coverageIndexes.AddRange(await db.IndexSnapshots.AsNoTracking()
+                .Where(x => x.ServerProfileId == currentServerId && x.CapturedAt == latestCapturedAt.Value)
+                .ToListAsync(cancellationToken));
+        }
+
         return Ok(latest.Select(x =>
         {
+            var covered = IsCoveredByExistingIndex(x, coverageIndexes);
             var interpretation = IndexInterpretation.BuildMissing(
                 x.UserSeeks,
                 x.UserScans,
                 x.AvgUserImpact,
-                x.ImprovementMeasure);
+                x.ImprovementMeasure,
+                covered);
 
             return new MissingIndexDto(
                 x.Id,
@@ -130,11 +153,51 @@ public sealed class IndexesController(AdvisorDbContext db) : ControllerBase
                 x.AvgTotalUserCost,
                 x.AvgUserImpact,
                 x.ImprovementMeasure,
+                covered,
                 interpretation.Level,
                 interpretation.Headline,
                 interpretation.Summary,
                 interpretation.SuggestedInspection,
                 x.CapturedAt);
-        }).ToList());
+        })
+        .OrderBy(x => x.CoveredByExistingIndex)
+        .ThenByDescending(x => x.ImprovementMeasure)
+        .ToList());
     }
+
+    private static bool IsCoveredByExistingIndex(MissingIndexSnapshot missing, IReadOnlyCollection<IndexSnapshot> indexes)
+    {
+        var requiredKeys = ParseColumns(missing.EqualityColumns)
+            .Concat(ParseColumns(missing.InequalityColumns))
+            .ToArray();
+        var included = ParseColumns(missing.IncludedColumns);
+        if (requiredKeys.Length == 0) return false;
+
+        foreach (var index in indexes.Where(x =>
+                     x.ServerProfileId == missing.ServerProfileId &&
+                     x.DatabaseName.Equals(missing.DatabaseName, StringComparison.OrdinalIgnoreCase) &&
+                     x.TableName.Equals(missing.TableName, StringComparison.OrdinalIgnoreCase) &&
+                     !x.IsDisabled && !x.HasFilter))
+        {
+            var existingKeys = ParseColumns(index.KeyColumns);
+            if (existingKeys.Length < requiredKeys.Length) continue;
+
+            var prefix = existingKeys.Take(requiredKeys.Length).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (!requiredKeys.All(prefix.Contains)) continue;
+
+            var available = existingKeys.Concat(ParseColumns(index.IncludeColumns))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (included.All(available.Contains)) return true;
+        }
+
+        return false;
+    }
+
+    private static string[] ParseColumns(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(x => x.Trim().Trim('[', ']'))
+                .Where(x => x.Length > 0)
+                .ToArray();
 }

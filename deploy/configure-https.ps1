@@ -65,7 +65,7 @@ function Resolve-Certificate {
                 }
             }
         }
-    $selected = $candidates | Sort-Object Priority -Descending, @{Expression={$_.Certificate.NotAfter};Descending=$true} | Select-Object -First 1
+    $selected = $candidates | Sort-Object -Property @{Expression='Priority';Descending=$true}, @{Expression={$_.Certificate.NotAfter};Descending=$true} | Select-Object -First 1
     if ($null -eq $selected) { throw "No valid certificate matching '$HostName' was found in $storePath." }
     return $selected.Certificate
 }
@@ -128,7 +128,7 @@ if ($OpenFirewall) {
 Restart-WebAppPool -Name $site.applicationPool -ErrorAction SilentlyContinue
 Start-Website -Name $SiteName -ErrorAction SilentlyContinue
 
-Write-Host "HTTPS binding updated from settings." -ForegroundColor Green
+Write-Host 'HTTPS binding updated from settings.' -ForegroundColor Green
 Write-Host "URL        : https://${HostName}:$HttpsPort"
 Write-Host "Certificate: $($certificate.Thumbprint)"
 Write-Host "Settings   : $SettingsPath"

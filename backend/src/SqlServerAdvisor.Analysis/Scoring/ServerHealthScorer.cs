@@ -1,4 +1,5 @@
 using SqlServerAdvisor.Domain.Entities;
+using SqlServerAdvisor.Domain.Enums;
 
 namespace SqlServerAdvisor.Analysis.Scoring;
 
@@ -34,6 +35,31 @@ public static class ServerHealthScorer
 
         if (availableSignals == 0) return null;
         return Math.Max(0, Math.Round(100m - penalty, 2));
+    }
+
+    public static decimal? ApplyAdvisorPenalty(decimal? liveHealthScore, IReadOnlyCollection<Finding> openFindings)
+    {
+        if (liveHealthScore is null) return null;
+
+        decimal penalty = 0;
+        foreach (var finding in openFindings)
+        {
+            // CPU / memory / immediate blocking are already represented in the live score.
+            if (finding.RuleId is "CPU-001" or "MEM-001" or "BLK-001")
+                continue;
+
+            penalty += finding.Severity switch
+            {
+                FindingSeverity.Critical => 10m,
+                FindingSeverity.High => 6m,
+                FindingSeverity.Medium => 3m,
+                FindingSeverity.Low => 1m,
+                _ => 0m
+            };
+        }
+
+        penalty = Math.Min(40m, penalty);
+        return Math.Max(0m, Math.Round(liveHealthScore.Value - penalty, 2));
     }
 
     public static int DataCoveragePercent(ServerSnapshot snapshot)

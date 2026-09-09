@@ -67,7 +67,7 @@ public sealed class ExpensiveQueryRule : IQueryAnalysisRule
                 ConfidenceScore = confidence,
                 ImpactScore = score,
                 FindingScore = score,
-                Fingerprint = $"QRY-001:{serverProfileId:N}:{query.QueryHash}",
+                Fingerprint = $"QRY-001:{serverProfileId:N}:Q{query.Id}",
                 FirstDetectedAt = capturedAt,
                 LastDetectedAt = capturedAt
             }

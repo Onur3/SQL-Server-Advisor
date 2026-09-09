@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "installation": {
+    "installRoot": "C:\\Program Files\\SqlServerAdvisor",
+    "siteName": "SQLServerAdvisor",
+    "appPoolName": "SQLServerAdvisor",
+    "workerServiceName": "SQLServerAdvisorWorker",
+    "workerDisplayName": "SQL Server Advisor Collector",
+    "dataProtectionKeyPath": "C:\\ProgramData\\SqlServerAdvisor\\Keys"
+  },
+  "web": {
+    "protocol": "http",
+    "hostName": "localhost",
+    "httpPort": 8088,
+    "httpsPort": 443,
+    "keepHttpBinding": false,
+    "windowsAuthentication": false,
+    "openFirewall": true
+  },
+  "certificate": {
+    "mode": "auto",
+    "thumbprint": "",
+    "pfxPath": "",
+    "pfxPasswordEnvironmentVariable": "SQLSERVERADVISOR_PFX_PASSWORD",
+    "storeLocation": "LocalMachine",
+    "storeName": "My"
+  },
+  "database": {
+    "sqlInstance": "localhost",
+    "databaseName": "SQLAdvisor",
+    "runMigrations": true,
+    "grantApplicationIdentities": true,
+    "connectionString": "",
+    "connectionStringEnvironmentVariable": "SQLSERVERADVISOR_CONNECTION_STRING"
+  },
+  "build": {
+    "configuration": "Release",
+    "installHostingBundleIfMissing": true,
+    "hostingBundleUrl": ""
+  }
+}

@@ -51,6 +51,10 @@ export interface DashboardServer {
   blockedRequests: number;
   healthScore?: number | null;
   dataCoveragePercent: number;
+  openFindingCount: number;
+  highFindingCount: number;
+  criticalFindingCount: number;
+  topFindingScore?: number | null;
 }
 
 export interface WorkerStatus {

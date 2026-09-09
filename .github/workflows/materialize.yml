@@ -40,13 +40,14 @@ jobs:
           check part062 4000 24a0ff4885beb96ff6b3f2193faaed5a80ab854f5d102a926f23a6acfab6e452
           check part070 4000 54c06e2aed26491009fa722492331862a6b5285b7c905cc3afae1f479731ae6a
           check part071 4000 5f48567b4b71e61a73dbd32317d8535c1c2dfa6f6b752ca7961bba4eef929aa8
-          check part072 4000 3d97fd0d7cbca644b36b5b9ad641db62e9b2eba7c4cf0fc7ceaf9777f97a069d
+          check part0720 2000 db702ff59d70c8ecf37bd9a7e37238b0c38354b77b25402b5317ec66a9194d2f
+          check part0721 2000 2f52127e032ea178a85ce40907d505c21214227145ff78f35a38734dcd1abaac
           check part08 416 c78d60e2b2e35030d3e5332d0f5106a3d8f38bfcd43d9eb5b0d4cafb834ee79e
       - name: Rebuild archive
         shell: bash
         run: |
           set -euo pipefail
-          cat /tmp/part00.b64 /tmp/part010a.b64 /tmp/part010b.b64 /tmp/part011.b64 /tmp/part012.b64 /tmp/part02.b64 /tmp/part03.b64 /tmp/part040.b64 /tmp/part041.b64 /tmp/part042.b64 /tmp/part043.b64 /tmp/part044.b64 /tmp/part045.b64 /tmp/part050.b64 /tmp/part051.b64 /tmp/part052.b64 /tmp/part060.b64 /tmp/part061.b64 /tmp/part062.b64 /tmp/part070.b64 /tmp/part071.b64 /tmp/part072.b64 /tmp/part08.b64 > /tmp/project.b64
+          cat /tmp/part00.b64 /tmp/part010a.b64 /tmp/part010b.b64 /tmp/part011.b64 /tmp/part012.b64 /tmp/part02.b64 /tmp/part03.b64 /tmp/part040.b64 /tmp/part041.b64 /tmp/part042.b64 /tmp/part043.b64 /tmp/part044.b64 /tmp/part045.b64 /tmp/part050.b64 /tmp/part051.b64 /tmp/part052.b64 /tmp/part060.b64 /tmp/part061.b64 /tmp/part062.b64 /tmp/part070.b64 /tmp/part071.b64 /tmp/part0720.b64 /tmp/part0721.b64 /tmp/part08.b64 > /tmp/project.b64
           base64 -d /tmp/project.b64 > /tmp/project.zip
           unzip -t /tmp/project.zip
       - name: Materialize source

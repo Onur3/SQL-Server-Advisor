@@ -15,6 +15,8 @@ public sealed class RecommendationFactory : IRecommendationFactory
             "MEM-001" => CreateMemoryRecommendation(finding),
             "WAIT-001" => CreateWaitRecommendation(finding),
             "QRY-001" => CreateQueryRecommendation(finding),
+            "IDX-001" => CreateFragmentationRecommendation(finding),
+            "IDX-002" => CreateMissingIndexRecommendation(finding),
             _ => null
         };
 
@@ -89,6 +91,32 @@ public sealed class RecommendationFactory : IRecommendationFactory
         ConfidenceScore = finding.ConfidenceScore,
         RecommendedAction = "Execution plan üzerinde scan/seek tercihlerini, cardinality tahminlerini, key lookup maliyetini, sort/hash spill işaretlerini ve parameter sensitivity davranışını inceleyin. İndeks veya sorgu değişikliğini test ortamında doğrulayıp DBA onayıyla uygulayın.",
         ScriptText = "SELECT TOP (50) CONVERT(varchar(130), qs.query_hash, 1) AS query_hash, qs.execution_count, qs.total_worker_time/1000.0 AS total_cpu_ms, (qs.total_worker_time/NULLIF(qs.execution_count,0))/1000.0 AS avg_cpu_ms, (qs.total_elapsed_time/NULLIF(qs.execution_count,0))/1000.0 AS avg_duration_ms, qs.total_logical_reads*1.0/NULLIF(qs.execution_count,0) AS avg_logical_reads, DB_NAME(st.dbid) AS database_name, st.text, qp.query_plan FROM sys.dm_exec_query_stats qs CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) st OUTER APPLY sys.dm_exec_query_plan(qs.plan_handle) qp ORDER BY qs.total_worker_time DESC;",
+        Status = "New"
+    };
+
+    private static Recommendation CreateFragmentationRecommendation(Finding finding) => new()
+    {
+        PriorityScore = finding.FindingScore,
+        Title = "İndeks fiziksel durumunu workload ve storage ile birlikte doğrulayın",
+        Explanation = "Yüksek fragmentation tespit edildi ancak fragmentation tek başına rebuild/reorganize kararı için yeterli değildir. Sayfa sayısı, page density, storage latency ve bakım penceresi birlikte değerlendirilmelidir.",
+        ExpectedBenefit = "Medium",
+        RiskLevel = "Low",
+        ConfidenceScore = finding.ConfidenceScore,
+        RecommendedAction = "İlgili indeksin page count, fragmentation, kullanım yoğunluğu ve I/O davranışını doğrulayın. Bakım gerekiyorsa test ve bakım penceresi planı sonrasında DBA tarafından uygulanmalıdır.",
+        ScriptText = "SELECT DB_NAME(database_id) AS database_name, object_id, index_id, avg_fragmentation_in_percent, page_count FROM sys.dm_db_index_physical_stats(DB_ID(), NULL, NULL, NULL, 'LIMITED') WHERE index_id > 0 AND page_count >= 1000 ORDER BY page_count DESC;",
+        Status = "New"
+    };
+
+    private static Recommendation CreateMissingIndexRecommendation(Finding finding) => new()
+    {
+        PriorityScore = finding.FindingScore,
+        Title = "Missing-index adayını mevcut indekslerle karşılaştırın",
+        Explanation = "SQL Server missing-index DMV yüksek etkili bir aday gösteriyor. DMV önerileri index key sırası, overlapping index, write overhead ve gerçek execution plan bağlamını tek başına değerlendirmez.",
+        ExpectedBenefit = "High",
+        RiskLevel = "Low",
+        ConfidenceScore = finding.ConfidenceScore,
+        RecommendedAction = "Önce aynı tablo üzerindeki mevcut indeksleri, key/include örtüşmesini, ilgili sorgu planlarını ve write yoğunluğunu inceleyin. Gerekirse tek bir konsolide indeks tasarımını test ortamında doğrulayın. Advisor otomatik CREATE INDEX çalıştırmaz.",
+        ScriptText = "SELECT DB_NAME(mid.database_id) AS database_name, OBJECT_SCHEMA_NAME(mid.object_id, mid.database_id) AS schema_name, OBJECT_NAME(mid.object_id, mid.database_id) AS table_name, mid.equality_columns, mid.inequality_columns, mid.included_columns, migs.user_seeks, migs.user_scans, migs.avg_total_user_cost, migs.avg_user_impact FROM sys.dm_db_missing_index_details mid JOIN sys.dm_db_missing_index_groups mig ON mig.index_handle = mid.index_handle JOIN sys.dm_db_missing_index_group_stats migs ON migs.group_handle = mig.index_group_handle ORDER BY (migs.avg_total_user_cost * migs.avg_user_impact * (migs.user_seeks + migs.user_scans)) DESC;",
         Status = "New"
     };
 }

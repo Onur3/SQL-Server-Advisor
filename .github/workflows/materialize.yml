@@ -16,27 +16,45 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate package chunks
+        shell: bash
+        run: |
+          set -euo pipefail
+          check() {
+            file="$1"; expected_len="$2"; expected_hash="$3"
+            tr -cd 'A-Za-z0-9+/=' < "packages/${file}.b64" > "/tmp/${file}.b64"
+            actual_len=$(wc -c < "/tmp/${file}.b64" | tr -d ' ')
+            actual_hash=$(sha256sum "/tmp/${file}.b64" | awk '{print $1}')
+            echo "${file} len=${actual_len} sha256=${actual_hash}"
+            test "$actual_len" = "$expected_len"
+            test "$actual_hash" = "$expected_hash"
+            base64 --decode "/tmp/${file}.b64" >/dev/null
+          }
+          check part00 12000 d8ba1b4fbdc11e755ee90a5e828f1f44fb85b24d6080f4387e74101acffb089a
+          check part01 12000 38841436f417b344ee039ccb74a5a6da1359f7bef7e4ed2444071f6966aa5294
+          check part02 12000 71ce89dc9e3593da66da9622e5886af69e0d5174dccec98046c134cba4a64a2b
+          check part03 12000 416e9675d8dfe719095401e9513a74b13610fa12c819f7e6515693a27194cfdf
+          check part04 12000 795e20e0df6b40b789cb097cb5e31778b1e2d78e23dce100ba46537cd3b6b10e
+          check part050 4000 a992aea5d7d68c73f1a37d79f642eb2522452f8f35a364497911853ed29fdcc4
+          check part051 4000 799339a52ebbc7089617dc75ab57daaf97698c0692e5870c7cf965acbe7396a3
+          check part052 4000 a1ceb6982a0d39d1165e8fb1b0b0892dccc278f8ffb9ef43a2d2bd10ac9b72a6
+          check part060 4000 e258ff54f7dc8ac7e4e71f00475299f1f520f3af5c88caa328026cdd96abf774
+          check part061 4000 05f3f5584dbe1385acbe1c5c665032affbf96393ee92756c878f965045ee832d
+          check part062 4000 24a0ff4885beb96ff6b3f2193faaed5a80ab854f5d102a926f23a6acfab6e452
+          check part070 4000 54c06e2aed26491009fa722492331862a6b5285b7c905cc3afae1f479731ae6a
+          check part071 4000 5f48567b4b71e61a73dbd32317d8535c1c2dfa6f6b752ca7961bba4eef929aa8
+          check part072 4000 3d97fd0d7cbca644b36b5b9ad641db62e9b2eba7c4cf0fc7ceaf9777f97a069d
+          check part08 416 c78d60e2b2e35030d3e5332d0f5106a3d8f38bfcd43d9eb5b0d4cafb834ee79e
+
       - name: Rebuild and validate source archive
         shell: bash
         run: |
           set -euo pipefail
-          cat \
-            packages/part00.b64 \
-            packages/part01.b64 \
-            packages/part02.b64 \
-            packages/part03.b64 \
-            packages/part04.b64 \
-            packages/part050.b64 \
-            packages/part051.b64 \
-            packages/part052.b64 \
-            packages/part060.b64 \
-            packages/part061.b64 \
-            packages/part062.b64 \
-            packages/part070.b64 \
-            packages/part071.b64 \
-            packages/part072.b64 \
-            packages/part08.b64 \
-            | tr -cd 'A-Za-z0-9+/=' > /tmp/sql-server-advisor.b64
+          cat /tmp/part00.b64 /tmp/part01.b64 /tmp/part02.b64 /tmp/part03.b64 /tmp/part04.b64 \
+              /tmp/part050.b64 /tmp/part051.b64 /tmp/part052.b64 \
+              /tmp/part060.b64 /tmp/part061.b64 /tmp/part062.b64 \
+              /tmp/part070.b64 /tmp/part071.b64 /tmp/part072.b64 /tmp/part08.b64 \
+              > /tmp/sql-server-advisor.b64
           base64 --decode /tmp/sql-server-advisor.b64 > /tmp/sql-server-advisor.zip
           unzip -t /tmp/sql-server-advisor.zip
 

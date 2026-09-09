@@ -106,9 +106,9 @@ BEGIN
 END
 GO
 
-IF OBJECT_ID(N'QRY.Plan', N'U') IS NULL
+IF OBJECT_ID(N'QRY.[Plan]', N'U') IS NULL
 BEGIN
-    CREATE TABLE QRY.Plan
+    CREATE TABLE QRY.[Plan]
     (
         Id bigint IDENTITY(1,1) NOT NULL CONSTRAINT PK_QRY_Plan PRIMARY KEY,
         QueryId bigint NOT NULL,
@@ -120,7 +120,7 @@ BEGIN
         LastSeenAt datetimeoffset(3) NOT NULL,
         CONSTRAINT FK_QRY_Plan_Query FOREIGN KEY(QueryId) REFERENCES QRY.Query(Id)
     );
-    CREATE UNIQUE INDEX UX_QRY_Plan_QueryHashSource ON QRY.Plan(QueryId, PlanHash, Source);
+    CREATE UNIQUE INDEX UX_QRY_Plan_QueryHashSource ON QRY.[Plan](QueryId, PlanHash, Source);
 END
 GO
 
@@ -146,7 +146,7 @@ BEGIN
         CapturedAt datetimeoffset(3) NOT NULL,
         CONSTRAINT FK_QRY_Runtime_Server FOREIGN KEY(ServerProfileId) REFERENCES ADM.Server(Id),
         CONSTRAINT FK_QRY_Runtime_Query FOREIGN KEY(QueryId) REFERENCES QRY.Query(Id),
-        CONSTRAINT FK_QRY_Runtime_Plan FOREIGN KEY(PlanId) REFERENCES QRY.Plan(Id)
+        CONSTRAINT FK_QRY_Runtime_Plan FOREIGN KEY(PlanId) REFERENCES QRY.[Plan](Id)
     );
     CREATE INDEX IX_QRY_Runtime_ServerQueryCaptured ON QRY.Runtime(ServerProfileId, QueryId, CapturedAt DESC)
         INCLUDE(ImpactScore, AverageCpuMs, AverageDurationMs, AverageLogicalReads, ExecutionCount);

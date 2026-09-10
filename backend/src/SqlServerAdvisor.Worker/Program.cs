@@ -16,6 +16,7 @@ builder.Services.AddAdvisorAnalysis();
 builder.Services.AddHostedService<HeartbeatWorker>();
 builder.Services.AddHostedService<ServerSnapshotWorker>();
 builder.Services.AddHostedService<TelemetryWorker>();
+builder.Services.AddHostedService<WorkloadFileWorker>();
 
 var host = builder.Build();
 await host.RunAsync();

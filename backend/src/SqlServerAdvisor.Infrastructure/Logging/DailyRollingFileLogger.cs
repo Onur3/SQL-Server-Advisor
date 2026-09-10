@@ -20,7 +20,16 @@ public static class DailyRollingFileLoggerExtensions
         string defaultPrefix)
     {
         var options = new DailyRollingFileLoggerOptions();
-        configuration.GetSection("Logging:File").Bind(options);
+        var section = configuration.GetSection("Logging:File");
+
+        if (bool.TryParse(section["Enabled"], out var enabled))
+            options.Enabled = enabled;
+        if (!string.IsNullOrWhiteSpace(section["DirectoryPath"]))
+            options.DirectoryPath = section["DirectoryPath"]!;
+        if (!string.IsNullOrWhiteSpace(section["FileNamePrefix"]))
+            options.FileNamePrefix = section["FileNamePrefix"]!;
+        if (int.TryParse(section["RetainedDays"], out var retainedDays))
+            options.RetainedDays = retainedDays;
 
         if (string.IsNullOrWhiteSpace(options.DirectoryPath))
         {

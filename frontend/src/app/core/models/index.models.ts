@@ -25,6 +25,19 @@ export interface FragmentedIndex {
   capturedAt: string;
 }
 
+export interface ExistingIndexSummary {
+  indexName: string;
+  keyColumns: string;
+  includeColumns: string;
+  isUnique: boolean;
+  isPrimaryKey: boolean;
+  hasFilter: boolean;
+  filterDefinition?: string | null;
+  reads: number;
+  writes: number;
+  sizeMb: number;
+}
+
 export interface MissingIndexCandidate {
   id: number;
   serverProfileId: string;
@@ -40,6 +53,12 @@ export interface MissingIndexCandidate {
   avgUserImpact: number;
   improvementMeasure: number;
   coveredByExistingIndex: boolean;
+  decisionType: string;
+  decisionTitle: string;
+  decisionReason: string;
+  proposedCreateSql?: string | null;
+  existingIndexes: ExistingIndexSummary[];
+  matchingWorkloadFiles: string[];
   diagnosticLevel: string;
   diagnosticHeadline: string;
   diagnosticSummary: string;

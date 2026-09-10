@@ -125,8 +125,8 @@ DECLARE @verifySql nvarchar(max) =
 SELECT
     ORIGINAL_LOGIN() AS OriginalLogin,
     SUSER_SNAME() AS EffectiveLogin,
-    CAST(HAS_PERMS_BY_NAME(NULL, N''SERVER'', N''VIEW SERVER STATE'') AS bit) AS HasViewServerState,
-    CAST(HAS_PERMS_BY_NAME(NULL, N''SERVER'', N''VIEW ANY DATABASE'') AS bit) AS HasViewAnyDatabase;
+    CAST(HAS_PERMS_BY_NAME(NULL, NULL, N''VIEW SERVER STATE'') AS bit) AS HasViewServerState,
+    CAST(HAS_PERMS_BY_NAME(NULL, NULL, N''VIEW ANY DATABASE'') AS bit) AS HasViewAnyDatabase;
 ';
 
 SELECT @verifySql += N'

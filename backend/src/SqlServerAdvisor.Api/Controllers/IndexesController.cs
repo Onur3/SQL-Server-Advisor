@@ -14,33 +14,40 @@ namespace SqlServerAdvisor.Api.Controllers;
 [Route("api/indexes")]
 public sealed class IndexesController(AdvisorDbContext db) : ControllerBase
 {
+    [HttpGet("current")]
     [HttpGet("fragmented")]
-    public async Task<ActionResult<IReadOnlyCollection<FragmentedIndexDto>>> GetFragmented(
+    public async Task<ActionResult<IReadOnlyCollection<FragmentedIndexDto>>> GetCurrentIndexes(
         [FromQuery] Guid? serverId,
         [FromQuery] int take = 100,
         CancellationToken cancellationToken = default)
     {
-        take = Math.Clamp(take, 1, 200);
+        take = Math.Clamp(take, 1, 500);
 
-        var query = db.IndexSnapshots.AsNoTracking()
-            .Where(x => x.AvgFragmentationPercent != null && x.PageCount != null && x.PageCount >= 1000);
-
+        var source = db.IndexSnapshots.AsNoTracking().AsQueryable();
         if (serverId.HasValue)
-            query = query.Where(x => x.ServerProfileId == serverId.Value);
+            source = source.Where(x => x.ServerProfileId == serverId.Value);
 
-        var recent = await query
-            .OrderByDescending(x => x.CapturedAt)
+        var latestCaptureByServer = source
+            .GroupBy(x => x.ServerProfileId)
+            .Select(group => new
+            {
+                ServerProfileId = group.Key,
+                CapturedAt = group.Max(x => x.CapturedAt)
+            });
+
+        var currentQuery =
+            from index in source
+            join latest in latestCaptureByServer
+                on new { index.ServerProfileId, index.CapturedAt }
+                equals new { latest.ServerProfileId, latest.CapturedAt }
+            select index;
+
+        var latest = await currentQuery
+            .OrderByDescending(x => x.PageCount)
             .ThenByDescending(x => x.AvgFragmentationPercent)
-            .Take(take * 10)
-            .ToListAsync(cancellationToken);
-
-        var latest = recent
-            .GroupBy(x => new { x.ServerProfileId, x.DatabaseName, x.ObjectId, x.IndexId })
-            .Select(x => x.OrderByDescending(y => y.CapturedAt).First())
-            .OrderByDescending(x => x.AvgFragmentationPercent)
-            .ThenByDescending(x => x.PageCount)
+            .ThenByDescending(x => x.UserSeeks + x.UserScans + x.UserLookups)
             .Take(take)
-            .ToList();
+            .ToListAsync(cancellationToken);
 
         var serverIds = latest.Select(x => x.ServerProfileId).Distinct().ToArray();
         var servers = await db.Servers.AsNoTracking()

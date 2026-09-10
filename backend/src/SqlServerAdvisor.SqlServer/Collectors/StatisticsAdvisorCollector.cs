@@ -24,6 +24,7 @@ public sealed class StatisticsAdvisorCollector(IMonitoredConnectionStringFactory
         WHERE database_id > 4
           AND state = 0
           AND source_database_id IS NULL
+          AND name <> N'SQLAdvisor'
         ORDER BY name;
         """;
 

@@ -10,6 +10,7 @@ public sealed class WorkloadFileWorker(
     ILogger<WorkloadFileWorker> logger) : BackgroundService
 {
     private DateTimeOffset _nextRun = DateTimeOffset.MinValue;
+    private string? _lastScanRequestToken;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -19,7 +20,8 @@ public sealed class WorkloadFileWorker(
         {
             try
             {
-                if (DateTimeOffset.UtcNow >= _nextRun)
+                var requested = await HasNewScanRequestAsync(stoppingToken);
+                if (requested || DateTimeOffset.UtcNow >= _nextRun)
                     await ScanAsync(stoppingToken);
             }
             catch (Exception ex)
@@ -29,6 +31,26 @@ public sealed class WorkloadFileWorker(
 
             await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
         }
+    }
+
+    private async Task<bool> HasNewScanRequestAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AdvisorDbContext>();
+        var connectionString = db.Database.GetConnectionString();
+        if (string.IsNullOrWhiteSpace(connectionString)) return false;
+
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT [Value] FROM ADM.ApplicationSetting WHERE [Key] = N'Workload.ScanRequestToken';";
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        var token = value is null or DBNull ? null : Convert.ToString(value);
+        if (string.IsNullOrWhiteSpace(token) || token == _lastScanRequestToken)
+            return false;
+
+        _lastScanRequestToken = token;
+        return true;
     }
 
     private async Task ScanAsync(CancellationToken cancellationToken)

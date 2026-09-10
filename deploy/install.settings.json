@@ -17,6 +17,13 @@
     "windowsAuthentication": false,
     "openFirewall": true
   },
+  "authentication": {
+    "promptDuringInstall": true,
+    "enabled": false,
+    "username": "admin",
+    "iterations": 210000,
+    "sessionHours": 12
+  },
   "certificate": {
     "mode": "auto",
     "thumbprint": "",

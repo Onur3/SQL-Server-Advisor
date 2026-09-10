@@ -120,7 +120,7 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
             i.is_disabled AS IsDisabled,
             i.has_filter AS HasFilter,
             i.filter_definition AS FilterDefinition,
-            i.fill_factor AS FillFactor,
+            i.fill_factor AS [FillFactor],
             cmp.DataCompression,
             DATEDIFF(day, osi.sqlserver_start_time, SYSDATETIME()) AS UsageSinceDays,
             ISNULL(op.LeafInsertCount, 0) AS LeafInsertCount,

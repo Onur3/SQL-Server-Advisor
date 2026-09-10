@@ -49,10 +49,10 @@ import { AdvisorApiService } from '../../core/services/advisor-api.service';
       <section>
         <div class="section-title">
           <div><h2>Mevcut İndekslerin Sağlığı ve Değeri</h2><p>Fragmentation tek başına bakım kararı değildir; gözlem süresi ve read/write değeriyle birlikte yorumlanır.</p></div>
-          <span>bakım görünümü: page_count ≥ 1000</span>
+          <span>güncel snapshot · bakım eşiği: page_count ≥ 1000 / frag ≥ %30</span>
         </div>
         @if (!fragmented().length) {
-          <mat-card class="empty"><mat-icon>task_alt</mat-icon><p>Şu anda analiz edilecek büyük indeks kaydı yok.</p></mat-card>
+          <mat-card class="empty"><mat-icon>task_alt</mat-icon><p>Güncel indeks snapshot kaydı yok.</p></mat-card>
         } @else {
           <div class="grid">
             @for (item of fragmented(); track item.id) {
@@ -172,7 +172,7 @@ export class IndexesComponent implements OnInit {
   ngOnInit(): void {
     timer(0, 300_000).pipe(
       switchMap(() => forkJoin({
-        fragmented: this.api.getFragmentedIndexes(100),
+        fragmented: this.api.getFragmentedIndexes(200),
         missing: this.api.getMissingIndexCandidates(100),
         coverage: this.api.getCollectorCoverage('IndexAdvisor')
       })),
@@ -189,7 +189,11 @@ export class IndexesComponent implements OnInit {
   }
 
   readCount(item: FragmentedIndex): number { return item.userSeeks + item.userScans + item.userLookups; }
-  maintenanceCandidates(): number { return this.fragmented().filter(x => (x.avgFragmentationPercent ?? 0) >= 30).length; }
+  maintenanceCandidates(): number {
+    return this.fragmented().filter(x =>
+      (x.pageCount ?? 0) >= 1000 && (x.avgFragmentationPercent ?? 0) >= 30
+    ).length;
+  }
   createCandidates(): number { return this.missing().filter(x => x.decisionType === 'CreateIndexCandidate').length; }
   consolidateCandidates(): number { return this.missing().filter(x => x.decisionType === 'ConsolidateOrCreate').length; }
   coveredMissing(): number { return this.missing().filter(x => x.decisionType === 'UseExisting').length; }

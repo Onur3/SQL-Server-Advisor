@@ -37,9 +37,9 @@ public sealed class IndexesController(AdvisorDbContext db) : ControllerBase
 
         var currentQuery =
             from index in source
-            join latest in latestCaptureByServer
+            join capture in latestCaptureByServer
                 on new { index.ServerProfileId, index.CapturedAt }
-                equals new { latest.ServerProfileId, latest.CapturedAt }
+                equals new { capture.ServerProfileId, capture.CapturedAt }
             select index;
 
         var latest = await currentQuery

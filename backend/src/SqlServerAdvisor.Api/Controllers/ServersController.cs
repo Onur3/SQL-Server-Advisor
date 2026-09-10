@@ -31,6 +31,13 @@ public sealed class ServersController(
         return Ok(items);
     }
 
+    [HttpGet("table-scopes")]
+    public async Task<ActionResult<IReadOnlyCollection<MonitoredTableScopeItemDto>>> GetAllTableScopes(
+        CancellationToken cancellationToken)
+    {
+        return Ok(await tableScopeStore.GetAllAsync(cancellationToken));
+    }
+
     [HttpPost("test")]
     public async Task<ActionResult<ConnectionTestResult>> Test(CreateServerRequest request, CancellationToken cancellationToken)
     {
@@ -157,11 +164,10 @@ public sealed class ServersController(
         if (profile is null) return NotFound();
 
         var requested = (request.Tables ?? [])
-            .Where(x => x is not null)
             .Select(x => new MonitoredTableSelectionDto(
-                x.DatabaseName?.Trim() ?? string.Empty,
-                x.SchemaName?.Trim() ?? string.Empty,
-                x.TableName?.Trim() ?? string.Empty))
+                x.DatabaseName.Trim(),
+                x.SchemaName.Trim(),
+                x.TableName.Trim()))
             .Where(x => x.DatabaseName.Length > 0 && x.SchemaName.Length > 0 && x.TableName.Length > 0)
             .DistinctBy(x => $"{x.DatabaseName}\u001f{x.SchemaName}\u001f{x.TableName}", StringComparer.OrdinalIgnoreCase)
             .ToArray();

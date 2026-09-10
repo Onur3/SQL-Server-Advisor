@@ -23,32 +23,7 @@ public sealed class IndexesController(AdvisorDbContext db) : ControllerBase
     {
         take = Math.Clamp(take, 1, 500);
 
-        var source = db.IndexSnapshots.AsNoTracking().AsQueryable();
-        if (serverId.HasValue)
-            source = source.Where(x => x.ServerProfileId == serverId.Value);
-
-        var latestCaptureByServer = source
-            .GroupBy(x => x.ServerProfileId)
-            .Select(group => new
-            {
-                ServerProfileId = group.Key,
-                CapturedAt = group.Max(x => x.CapturedAt)
-            });
-
-        var currentQuery =
-            from index in source
-            join capture in latestCaptureByServer
-                on new { index.ServerProfileId, index.CapturedAt }
-                equals new { capture.ServerProfileId, capture.CapturedAt }
-            select index;
-
-        var latest = await currentQuery
-            .OrderByDescending(x => x.PageCount)
-            .ThenByDescending(x => x.AvgFragmentationPercent)
-            .ThenByDescending(x => x.UserSeeks + x.UserScans + x.UserLookups)
-            .Take(take)
-            .ToListAsync(cancellationToken);
-
+        var latest = await LoadCurrentIndexRowsAsync(serverId, take, cancellationToken);
         var serverIds = latest.Select(x => x.ServerProfileId).Distinct().ToArray();
         var servers = await db.Servers.AsNoTracking()
             .Where(x => serverIds.Contains(x.Id))
@@ -64,7 +39,7 @@ public sealed class IndexesController(AdvisorDbContext db) : ControllerBase
                 x.UserScans,
                 x.UserLookups,
                 x.UserUpdates,
-                x.UsageSinceDays,
+                0,
                 x.HasFilter);
 
             return new FragmentedIndexDto(
@@ -84,7 +59,7 @@ public sealed class IndexesController(AdvisorDbContext db) : ControllerBase
                 x.UserUpdates,
                 x.HasFilter,
                 x.FilterDefinition,
-                x.UsageSinceDays,
+                0,
                 x.AvgFragmentationPercent,
                 x.PageCount,
                 interpretation.Level,
@@ -125,20 +100,7 @@ public sealed class IndexesController(AdvisorDbContext db) : ControllerBase
             .Where(x => serverIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, x => x.Name, cancellationToken);
 
-        var currentIndexes = new List<IndexSnapshot>();
-        foreach (var currentServerId in serverIds)
-        {
-            var latestCapturedAt = await db.IndexSnapshots.AsNoTracking()
-                .Where(x => x.ServerProfileId == currentServerId)
-                .MaxAsync(x => (DateTimeOffset?)x.CapturedAt, cancellationToken);
-
-            if (!latestCapturedAt.HasValue) continue;
-
-            currentIndexes.AddRange(await db.IndexSnapshots.AsNoTracking()
-                .Where(x => x.ServerProfileId == currentServerId && x.CapturedAt == latestCapturedAt.Value)
-                .ToListAsync(cancellationToken));
-        }
-
+        var currentIndexes = await LoadCurrentIndexDetailsAsync(serverIds, cancellationToken);
         var workloadFiles = await LoadWorkloadFilesAsync(cancellationToken);
 
         return Ok(latest.Select(x =>
@@ -220,6 +182,161 @@ public sealed class IndexesController(AdvisorDbContext db) : ControllerBase
         .ToList());
     }
 
+    private async Task<List<CurrentIndexRow>> LoadCurrentIndexRowsAsync(
+        Guid? serverId,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        var rows = new List<CurrentIndexRow>();
+        var connectionString = db.Database.GetConnectionString();
+        if (string.IsNullOrWhiteSpace(connectionString)) return rows;
+
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            WITH Latest AS
+            (
+                SELECT ServerProfileId, MAX(CapturedAt) AS CapturedAt
+                FROM SNP.[Index]
+                WHERE (@ServerProfileId IS NULL OR ServerProfileId = @ServerProfileId)
+                GROUP BY ServerProfileId
+            )
+            SELECT TOP (@Take)
+                i.Id,
+                i.ServerProfileId,
+                i.DatabaseName,
+                i.TableName,
+                ISNULL(i.IndexName, N'<unnamed>') AS IndexName,
+                ISNULL(i.IndexType, N'<unknown>') AS TypeDesc,
+                ISNULL(i.KeyColumns, N'') AS KeyColumns,
+                ISNULL(i.IncludeColumns, N'') AS IncludeColumns,
+                CAST(ISNULL(i.SizeMb, 0) AS decimal(19,2)) AS SizeMb,
+                ISNULL(i.UserSeeks, 0) AS UserSeeks,
+                ISNULL(i.UserScans, 0) AS UserScans,
+                ISNULL(i.UserLookups, 0) AS UserLookups,
+                ISNULL(i.UserUpdates, 0) AS UserUpdates,
+                ISNULL(i.HasFilter, 0) AS HasFilter,
+                i.FilterDefinition,
+                i.AvgFragmentationPercent,
+                i.PageCount,
+                i.CapturedAt
+            FROM SNP.[Index] i
+            JOIN Latest l
+              ON l.ServerProfileId = i.ServerProfileId
+             AND l.CapturedAt = i.CapturedAt
+            ORDER BY ISNULL(i.PageCount, 0) DESC,
+                     ISNULL(i.AvgFragmentationPercent, 0) DESC,
+                     ISNULL(i.UserSeeks, 0) + ISNULL(i.UserScans, 0) + ISNULL(i.UserLookups, 0) DESC;
+            """;
+        command.Parameters.AddWithValue("@ServerProfileId", serverId.HasValue ? serverId.Value : DBNull.Value);
+        command.Parameters.AddWithValue("@Take", take);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            rows.Add(new CurrentIndexRow(
+                reader.GetInt64(0),
+                reader.GetGuid(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetString(4),
+                reader.GetString(5),
+                reader.GetString(6),
+                reader.GetString(7),
+                reader.GetDecimal(8),
+                reader.GetInt64(9),
+                reader.GetInt64(10),
+                reader.GetInt64(11),
+                reader.GetInt64(12),
+                reader.GetBoolean(13),
+                reader.IsDBNull(14) ? null : reader.GetString(14),
+                reader.IsDBNull(15) ? null : reader.GetDecimal(15),
+                reader.IsDBNull(16) ? null : reader.GetInt64(16),
+                reader.GetFieldValue<DateTimeOffset>(17)));
+        }
+
+        return rows;
+    }
+
+    private async Task<List<IndexSnapshot>> LoadCurrentIndexDetailsAsync(
+        IReadOnlyCollection<Guid> serverIds,
+        CancellationToken cancellationToken)
+    {
+        var rows = new List<IndexSnapshot>();
+        if (serverIds.Count == 0) return rows;
+
+        var connectionString = db.Database.GetConnectionString();
+        if (string.IsNullOrWhiteSpace(connectionString)) return rows;
+
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            WITH Latest AS
+            (
+                SELECT ServerProfileId, MAX(CapturedAt) AS CapturedAt
+                FROM SNP.[Index]
+                GROUP BY ServerProfileId
+            )
+            SELECT
+                i.Id,
+                i.ServerProfileId,
+                i.DatabaseName,
+                i.TableName,
+                ISNULL(i.IndexName, N'<unnamed>') AS IndexName,
+                ISNULL(i.KeyColumns, N'') AS KeyColumns,
+                ISNULL(i.IncludeColumns, N'') AS IncludeColumns,
+                CAST(ISNULL(i.SizeMb, 0) AS decimal(19,2)) AS SizeMb,
+                ISNULL(i.UserSeeks, 0) AS UserSeeks,
+                ISNULL(i.UserScans, 0) AS UserScans,
+                ISNULL(i.UserLookups, 0) AS UserLookups,
+                ISNULL(i.UserUpdates, 0) AS UserUpdates,
+                i.IsUnique,
+                i.IsPrimaryKey,
+                i.IsDisabled,
+                ISNULL(i.HasFilter, 0) AS HasFilter,
+                i.FilterDefinition,
+                i.CapturedAt
+            FROM SNP.[Index] i
+            JOIN Latest l
+              ON l.ServerProfileId = i.ServerProfileId
+             AND l.CapturedAt = i.CapturedAt;
+            """;
+
+        var wanted = serverIds.ToHashSet();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var currentServerId = reader.GetGuid(1);
+            if (!wanted.Contains(currentServerId)) continue;
+
+            rows.Add(new IndexSnapshot
+            {
+                Id = reader.GetInt64(0),
+                ServerProfileId = currentServerId,
+                DatabaseName = reader.GetString(2),
+                TableName = reader.GetString(3),
+                IndexName = reader.GetString(4),
+                KeyColumns = reader.GetString(5),
+                IncludeColumns = reader.GetString(6),
+                SizeMb = reader.GetDecimal(7),
+                UserSeeks = reader.GetInt64(8),
+                UserScans = reader.GetInt64(9),
+                UserLookups = reader.GetInt64(10),
+                UserUpdates = reader.GetInt64(11),
+                IsUnique = reader.GetBoolean(12),
+                IsPrimaryKey = reader.GetBoolean(13),
+                IsDisabled = reader.GetBoolean(14),
+                HasFilter = reader.GetBoolean(15),
+                FilterDefinition = reader.IsDBNull(16) ? null : reader.GetString(16),
+                CapturedAt = reader.GetFieldValue<DateTimeOffset>(17)
+            });
+        }
+
+        return rows;
+    }
+
     private async Task<List<WorkloadFileRow>> LoadWorkloadFilesAsync(CancellationToken cancellationToken)
     {
         var rows = new List<WorkloadFileRow>();
@@ -242,9 +359,9 @@ public sealed class IndexesController(AdvisorDbContext db) : ControllerBase
                     reader.IsDBNull(3) ? string.Empty : reader.GetString(3)));
             }
         }
-        catch (SqlException ex) when (ex.Number is 208 or 2812)
+        catch (SqlException)
         {
-            // Upgrade migration may not have been deployed yet. Index analysis remains usable.
+            // Workload-file correlation is optional. A missing/older workload schema must not break Index Advisor APIs.
         }
 
         return rows;
@@ -262,9 +379,7 @@ public sealed class IndexesController(AdvisorDbContext db) : ControllerBase
         {
             var existingKeys = ParseColumns(index.KeyColumns);
             if (existingKeys.Length < requiredKeys.Length) continue;
-
-            var prefix = existingKeys.Take(requiredKeys.Length).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            if (!requiredKeys.All(prefix.Contains)) continue;
+            if (!existingKeys.Take(requiredKeys.Length).SequenceEqual(requiredKeys, StringComparer.OrdinalIgnoreCase)) continue;
 
             var available = existingKeys.Concat(ParseColumns(index.IncludeColumns))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -390,6 +505,26 @@ public sealed class IndexesController(AdvisorDbContext db) : ControllerBase
                 .Select(x => x.Trim().Trim('[', ']'))
                 .Where(x => x.Length > 0)
                 .ToArray();
+
+    private sealed record CurrentIndexRow(
+        long Id,
+        Guid ServerProfileId,
+        string DatabaseName,
+        string TableName,
+        string IndexName,
+        string TypeDesc,
+        string KeyColumns,
+        string IncludeColumns,
+        decimal SizeMb,
+        long UserSeeks,
+        long UserScans,
+        long UserLookups,
+        long UserUpdates,
+        bool HasFilter,
+        string? FilterDefinition,
+        decimal? AvgFragmentationPercent,
+        long? PageCount,
+        DateTimeOffset CapturedAt);
 
     private sealed record WorkloadFileRow(Guid? ServerProfileId, string? DatabaseName, string FileName, string ReferencedObjects);
     private sealed record IndexDecision(string Type, string Title, string Reason, string? ProposedSql);

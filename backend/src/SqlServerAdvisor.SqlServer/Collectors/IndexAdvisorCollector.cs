@@ -12,6 +12,18 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
     public int DefaultIntervalSeconds => 900;
     public int DefaultTimeoutSeconds => 60;
 
+    private const string ServerPermissionSql = """
+        SELECT
+            CAST(HAS_PERMS_BY_NAME(NULL, 'SERVER', 'VIEW SERVER STATE') AS int) AS HasViewServerState,
+            CAST(HAS_PERMS_BY_NAME(NULL, 'SERVER', 'VIEW ANY DATABASE') AS int) AS HasViewAnyDatabase;
+        """;
+
+    private const string DatabasePermissionSql = """
+        SELECT
+            CAST(HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'VIEW DATABASE STATE') AS int) AS HasViewDatabaseState,
+            CAST(HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'VIEW DEFINITION') AS int) AS HasViewDefinition;
+        """;
+
     private const string DatabaseSql = """
         SELECT name
         FROM sys.databases
@@ -87,8 +99,8 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
 
     private const string MissingIndexSql = """
         SELECT TOP (50)
-            DB_NAME(mid.database_id) AS DatabaseName,
-            QUOTENAME(OBJECT_SCHEMA_NAME(mid.object_id, mid.database_id)) + N'.' + QUOTENAME(OBJECT_NAME(mid.object_id, mid.database_id)) AS TableName,
+            DB_NAME() AS DatabaseName,
+            QUOTENAME(s.name) + N'.' + QUOTENAME(t.name) AS TableName,
             ISNULL(mid.equality_columns, N'') AS EqualityColumns,
             ISNULL(mid.inequality_columns, N'') AS InequalityColumns,
             ISNULL(mid.included_columns, N'') AS IncludedColumns,
@@ -101,6 +113,8 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
         FROM sys.dm_db_missing_index_details mid
         JOIN sys.dm_db_missing_index_groups mig ON mig.index_handle = mid.index_handle
         JOIN sys.dm_db_missing_index_group_stats migs ON migs.group_handle = mig.index_group_handle
+        JOIN sys.tables t ON t.object_id = mid.object_id
+        JOIN sys.schemas s ON s.schema_id = t.schema_id
         WHERE mid.database_id = DB_ID()
           AND (ISNULL(migs.user_seeks, 0) + ISNULL(migs.user_scans, 0)) >= 10
         ORDER BY ImprovementMeasure DESC;
@@ -111,15 +125,34 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
         await using var connection = new SqlConnection(connectionStringFactory.Create(server));
         await connection.OpenAsync(cancellationToken);
 
-        var databaseNames = (await connection.QueryAsync<string>(new CommandDefinition(
-            DatabaseSql,
-            commandTimeout: 10,
-            cancellationToken: cancellationToken))).AsList();
-
         var indexes = new List<IndexSnapshot>();
         var missingIndexes = new List<MissingIndexSnapshot>();
         var warnings = new List<string>();
         var capturedAt = DateTimeOffset.UtcNow;
+
+        var serverPermissions = await connection.QuerySingleAsync<ServerPermissionState>(new CommandDefinition(
+            ServerPermissionSql,
+            commandTimeout: 10,
+            cancellationToken: cancellationToken));
+
+        if (serverPermissions.HasViewServerState != 1)
+        {
+            warnings.Add("Sunucu: Index Advisor çalıştırılamadı; SQL Server 2019 için VIEW SERVER STATE yetkisi eksik.");
+            return new CollectorBatch
+            {
+                Indexes = indexes,
+                MissingIndexes = missingIndexes,
+                Warnings = warnings
+            };
+        }
+
+        if (serverPermissions.HasViewAnyDatabase != 1)
+            warnings.Add("Sunucu: VIEW ANY DATABASE yetkisi eksik; database coverage eksik olabilir.");
+
+        var databaseNames = (await connection.QueryAsync<string>(new CommandDefinition(
+            DatabaseSql,
+            commandTimeout: 10,
+            cancellationToken: cancellationToken))).AsList();
 
         foreach (var databaseName in databaseNames)
         {
@@ -128,6 +161,17 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
             try
             {
                 connection.ChangeDatabase(databaseName);
+
+                var databasePermissions = await connection.QuerySingleAsync<DatabasePermissionState>(new CommandDefinition(
+                    DatabasePermissionSql,
+                    commandTimeout: 10,
+                    cancellationToken: cancellationToken));
+
+                if (databasePermissions.HasViewDatabaseState != 1 || databasePermissions.HasViewDefinition != 1)
+                {
+                    warnings.Add($"{databaseName}: indeks analizi atlandı; VIEW DATABASE STATE ve VIEW DEFINITION yetkileri gerekli.");
+                    continue;
+                }
 
                 // Collect the complete index catalog, including small indexes. Fragmentation rules
                 // still apply their own page-count threshold, but missing-index coverage must compare
@@ -144,6 +188,9 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
                     indexes.Add(index);
                 }
 
+                // Resolve schema/table from the current database catalog rather than OBJECT_NAME().
+                // Without metadata visibility OBJECT_NAME/OBJECT_SCHEMA_NAME can return NULL silently,
+                // which previously produced malformed recommendations such as "ON  ([Column])".
                 var databaseMissingIndexes = (await connection.QueryAsync<MissingIndexSnapshot>(new CommandDefinition(
                     MissingIndexSql,
                     commandTimeout: 20,
@@ -151,6 +198,12 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
 
                 foreach (var missing in databaseMissingIndexes)
                 {
+                    if (string.IsNullOrWhiteSpace(missing.TableName))
+                    {
+                        warnings.Add($"{databaseName}: missing-index kaydı tablo metadata'sı çözülemediği için atlandı; VIEW DEFINITION yetkisini kontrol edin.");
+                        continue;
+                    }
+
                     missing.ServerProfileId = server.Id;
                     missing.CapturedAt = capturedAt;
                     missingIndexes.Add(missing);
@@ -158,7 +211,7 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
             }
             catch (SqlException ex) when (ex.Number is 229 or 297 or 916)
             {
-                warnings.Add($"{databaseName}: indeks analizi atlandı; CONNECT / VIEW DATABASE STATE / VIEW DEFINITION yetkilerini kontrol edin. SQL {ex.Number}.");
+                warnings.Add($"{databaseName}: indeks analizi atlandı; SQL Server 2019 için VIEW SERVER STATE ve bu veritabanında CONNECT / VIEW DATABASE STATE / VIEW DEFINITION yetkilerini kontrol edin. SQL {ex.Number}.");
             }
         }
 
@@ -169,4 +222,7 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
             Warnings = warnings
         };
     }
+
+    private sealed record ServerPermissionState(int HasViewServerState, int HasViewAnyDatabase);
+    private sealed record DatabasePermissionState(int HasViewDatabaseState, int HasViewDefinition);
 }

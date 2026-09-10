@@ -27,6 +27,15 @@ public sealed class StatisticsAdvisorCollector(IMonitoredConnectionStringFactory
         ORDER BY name;
         """;
 
+    private const string StatisticsGatewayExistsSql = """
+        SELECT CAST(CASE
+            WHEN OBJECT_ID(N'dbo.usp_SQLAdvisor_StatisticsMetadata', N'P') IS NULL THEN 0
+            ELSE 1
+        END AS int);
+        """;
+
+    private const string StatisticsGatewaySql = "EXEC dbo.usp_SQLAdvisor_StatisticsMetadata;";
+
     private const string StatisticsSql = """
         SELECT
             DB_NAME() AS DatabaseName,
@@ -99,22 +108,28 @@ public sealed class StatisticsAdvisorCollector(IMonitoredConnectionStringFactory
                     continue;
                 }
 
+                var hasSignedGateway = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+                    StatisticsGatewayExistsSql,
+                    commandTimeout: 10,
+                    cancellationToken: cancellationToken)) == 1;
+
+                var commandText = hasSignedGateway ? StatisticsGatewaySql : StatisticsSql;
                 var rows = (await connection.QueryAsync<StatisticsSnapshot>(new CommandDefinition(
-                    StatisticsSql,
+                    commandText,
                     commandTimeout: DefaultTimeoutSeconds,
                     cancellationToken: cancellationToken))).AsList();
 
-                if (rows.Count > 0)
+                if (!hasSignedGateway && rows.Count > 0)
                 {
                     var visibleCount = rows.Count(x => x.PropertiesVisible);
                     if (visibleCount == 0)
                     {
-                        warnings.Add($"{databaseName}: sys.dm_db_stats_properties hiçbir statistics için görünür değil; statistics tuning coverage eksik. Worker'a kullanıcı verisi SELECT yetkisi vermek yerine güvenli metadata gateway/module signing kullanın.");
+                        warnings.Add($"{databaseName}: sys.dm_db_stats_properties hiçbir statistics için görünür değil; statistics tuning coverage eksik. 016_statistics_metadata_gateway_sql2019_template.sql ile certificate-signed metadata gateway kurun; worker'a doğrudan tablo SELECT yetkisi vermeyin.");
                         continue;
                     }
 
                     if (visibleCount < rows.Count)
-                        warnings.Add($"{databaseName}: statistics metadata kısmi; {visibleCount:N0}/{rows.Count:N0} statistics için dm_db_stats_properties görünür. Eksik nesneler analiz edilmedi.");
+                        warnings.Add($"{databaseName}: statistics metadata kısmi; {visibleCount:N0}/{rows.Count:N0} statistics için dm_db_stats_properties görünür. Eksik nesneler analiz edilmedi; signed metadata gateway önerilir.");
                 }
 
                 foreach (var item in rows.Where(x => x.PropertiesVisible && x.Rows >= 1000))
@@ -126,7 +141,7 @@ public sealed class StatisticsAdvisorCollector(IMonitoredConnectionStringFactory
             }
             catch (SqlException ex) when (ex.Number is 229 or 297 or 916)
             {
-                warnings.Add($"{databaseName}: statistics analizi atlandı; CONNECT / VIEW DATABASE STATE / VIEW DEFINITION ve statistics metadata görünürlüğünü kontrol edin. SQL {ex.Number}.");
+                warnings.Add($"{databaseName}: statistics analizi atlandı; CONNECT / VIEW DATABASE STATE / VIEW DEFINITION ve varsa signed metadata gateway EXECUTE yetkisini kontrol edin. SQL {ex.Number}.");
             }
         }
 

@@ -89,6 +89,9 @@ public sealed class ServersController(
         var profile = await db.Servers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (profile is null) return NotFound();
 
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        SqlException? liveError = null;
+
         try
         {
             await using var connection = new SqlConnection(connectionStringFactory.Create(profile));
@@ -104,17 +107,40 @@ public sealed class ServersController(
                 ORDER BY name;
                 """;
 
-            var result = new List<DatabaseOptionDto>();
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
-                result.Add(new DatabaseOptionDto(reader.GetString(0)));
-
-            return Ok(result);
+                names.Add(reader.GetString(0));
         }
         catch (SqlException ex)
         {
-            return BadRequest(new { error = $"Veritabanı listesi alınamadı: {ex.Message}" });
+            liveError = ex;
         }
+
+        var snapshotDatabases = await db.IndexSnapshots.AsNoTracking()
+            .Where(x => x.ServerProfileId == id && x.DatabaseName != "SQLAdvisor")
+            .Select(x => x.DatabaseName)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        var statisticsDatabases = await db.StatisticsSnapshots.AsNoTracking()
+            .Where(x => x.ServerProfileId == id && x.DatabaseName != "SQLAdvisor")
+            .Select(x => x.DatabaseName)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        foreach (var name in snapshotDatabases.Concat(statisticsDatabases))
+        {
+            if (!string.IsNullOrWhiteSpace(name))
+                names.Add(name);
+        }
+
+        if (names.Count == 0 && liveError is not null)
+            return BadRequest(new { error = $"Veritabanı listesi alınamadı: {liveError.Message}" });
+
+        return Ok(names
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .Select(x => new DatabaseOptionDto(x))
+            .ToArray());
     }
 
     [HttpGet("{id:guid}/tables")]
@@ -209,33 +235,118 @@ public sealed class ServersController(
         string databaseName,
         CancellationToken cancellationToken)
     {
-        await using var connection = new SqlConnection(connectionStringFactory.Create(profile));
-        await connection.OpenAsync(cancellationToken);
-        connection.ChangeDatabase(databaseName);
+        var liveTables = new Dictionary<string, TableOptionDto>(StringComparer.OrdinalIgnoreCase);
+        SqlException? liveError = null;
 
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT s.name AS SchemaName, t.name AS TableName
-            FROM sys.tables t
-            JOIN sys.schemas s ON s.schema_id = t.schema_id
-            WHERE t.is_ms_shipped = 0
-            ORDER BY s.name, t.name;
-            """;
-
-        var result = new List<TableOptionDto>();
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
+        try
         {
-            var schemaName = reader.GetString(0);
-            var tableName = reader.GetString(1);
-            result.Add(new TableOptionDto(
+            await using var connection = new SqlConnection(connectionStringFactory.Create(profile));
+            await connection.OpenAsync(cancellationToken);
+            connection.ChangeDatabase(databaseName);
+
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT s.name AS SchemaName, t.name AS TableName
+                FROM sys.tables t
+                JOIN sys.schemas s ON s.schema_id = t.schema_id
+                WHERE t.is_ms_shipped = 0
+                ORDER BY s.name, t.name;
+                """;
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var schemaName = reader.GetString(0);
+                var tableName = reader.GetString(1);
+                var row = new TableOptionDto(
+                    databaseName,
+                    schemaName,
+                    tableName,
+                    $"{schemaName}.{tableName}");
+                liveTables[$"{schemaName}\u001f{tableName}"] = row;
+            }
+        }
+        catch (SqlException ex)
+        {
+            liveError = ex;
+        }
+
+        if (liveTables.Count > 0)
+            return liveTables.Values
+                .OrderBy(x => x.SchemaName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(x => x.TableName, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+        var observedNames = await db.IndexSnapshots.AsNoTracking()
+            .Where(x => x.ServerProfileId == profile.Id && x.DatabaseName == databaseName)
+            .OrderByDescending(x => x.CapturedAt)
+            .Select(x => x.TableName)
+            .Take(10000)
+            .ToListAsync(cancellationToken);
+
+        observedNames.AddRange(await db.StatisticsSnapshots.AsNoTracking()
+            .Where(x => x.ServerProfileId == profile.Id && x.DatabaseName == databaseName)
+            .OrderByDescending(x => x.CapturedAt)
+            .Select(x => x.TableName)
+            .Take(10000)
+            .ToListAsync(cancellationToken));
+
+        var fallbackTables = new Dictionary<string, TableOptionDto>(StringComparer.OrdinalIgnoreCase);
+        foreach (var observedName in observedNames)
+        {
+            if (!TryParseSnapshotTableName(observedName, out var schemaName, out var tableName))
+                continue;
+
+            var key = $"{schemaName}\u001f{tableName}";
+            fallbackTables.TryAdd(key, new TableOptionDto(
                 databaseName,
                 schemaName,
                 tableName,
                 $"{schemaName}.{tableName}"));
         }
 
-        return result;
+        if (fallbackTables.Count > 0)
+            return fallbackTables.Values
+                .OrderBy(x => x.SchemaName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(x => x.TableName, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+        if (liveError is not null)
+            throw liveError;
+
+        return [];
+    }
+
+    private static bool TryParseSnapshotTableName(
+        string? value,
+        out string schemaName,
+        out string tableName)
+    {
+        schemaName = string.Empty;
+        tableName = string.Empty;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+
+        var parts = value
+            .Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(x => x.Trim().Trim('[', ']', '"', '`'))
+            .Where(x => x.Length > 0)
+            .ToArray();
+
+        if (parts.Length >= 2)
+        {
+            schemaName = parts[^2];
+            tableName = parts[^1];
+            return true;
+        }
+
+        if (parts.Length == 1)
+        {
+            schemaName = "dbo";
+            tableName = parts[0];
+            return true;
+        }
+
+        return false;
     }
 
     private ServerProfile BuildProfile(CreateServerRequest request)

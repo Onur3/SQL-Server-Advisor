@@ -82,7 +82,6 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
          AND us.index_id = i.index_id
         WHERE i.index_id > 0
           AND i.is_hypothetical = 0
-          AND ips.PageCount >= 1000
         ORDER BY ips.PageCount DESC;
         """;
 
@@ -130,6 +129,9 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
             {
                 connection.ChangeDatabase(databaseName);
 
+                // Collect the complete index catalog, including small indexes. Fragmentation rules
+                // still apply their own page-count threshold, but missing-index coverage must compare
+                // against every existing usable index or it can recommend duplicates.
                 var databaseIndexes = (await connection.QueryAsync<IndexSnapshot>(new CommandDefinition(
                     IndexSql,
                     commandTimeout: DefaultTimeoutSeconds,

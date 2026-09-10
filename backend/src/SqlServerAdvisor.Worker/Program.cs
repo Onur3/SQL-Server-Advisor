@@ -1,9 +1,12 @@
 using SqlServerAdvisor.Analysis;
 using SqlServerAdvisor.Infrastructure;
+using SqlServerAdvisor.Infrastructure.Logging;
 using SqlServerAdvisor.SqlServer;
 using SqlServerAdvisor.Worker.Workers;
 
 var builder = Host.CreateApplicationBuilder(args);
+
+builder.Logging.AddSqlAdvisorFileLogging(builder.Configuration, "sqladvisor-worker");
 
 builder.Services.AddWindowsService(options =>
 {

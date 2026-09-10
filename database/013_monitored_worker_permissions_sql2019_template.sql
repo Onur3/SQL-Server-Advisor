@@ -9,8 +9,8 @@
     - Windows Authentication profile: normally NT SERVICE\SQLServerAdvisorWorker
     - SQL Login profile: use the exact ServerProfile.Username value
 
-  The Index Advisor warning now reports SUSER_SNAME() so you can verify the
-  effective login before changing this value.
+  The Index Advisor warning reports SUSER_SNAME() so the effective login can be
+  matched to this script without guessing.
 
   TEMPLATE suffix is intentional: deploy/install.ps1 excludes *template*.sql
   files from automatic SQLAdvisor migrations. These grants must remain an
@@ -31,8 +31,16 @@
 USE [master];
 GO
 
+IF OBJECT_ID('tempdb..#SqlAdvisorMonitoringPrincipal') IS NOT NULL
+    DROP TABLE #SqlAdvisorMonitoringPrincipal;
+
+CREATE TABLE #SqlAdvisorMonitoringPrincipal
+(
+    MonitoringLogin sysname NOT NULL
+);
+
+/* CHANGE ONLY THIS VALUE when the ServerProfile uses SQL Login authentication. */
 DECLARE @MonitoringLogin sysname = N'NT SERVICE\SQLServerAdvisorWorker';
--- SQL Login kullanıyorsanız üstteki değeri ServerProfile.Username ile değiştirin.
 
 IF SUSER_ID(@MonitoringLogin) IS NULL
 BEGIN
@@ -51,6 +59,8 @@ BEGIN
     END
 END;
 
+INSERT #SqlAdvisorMonitoringPrincipal(MonitoringLogin) VALUES (@MonitoringLogin);
+
 DECLARE @serverGrantSql nvarchar(max) =
     N'GRANT VIEW SERVER STATE TO ' + QUOTENAME(@MonitoringLogin) + N';' + CHAR(13) + CHAR(10) +
     N'GRANT VIEW ANY DATABASE TO ' + QUOTENAME(@MonitoringLogin) + N';';
@@ -60,8 +70,11 @@ PRINT N'Monitoring login: ' + @MonitoringLogin;
 PRINT N'Server permissions granted: VIEW SERVER STATE, VIEW ANY DATABASE.';
 GO
 
-DECLARE @MonitoringLogin sysname = N'NT SERVICE\SQLServerAdvisorWorker';
--- SQL Login kullanıyorsanız bu değeri de yukarıdaki değerle aynı yapın.
+DECLARE @MonitoringLogin sysname =
+    (SELECT TOP (1) MonitoringLogin FROM #SqlAdvisorMonitoringPrincipal);
+
+IF @MonitoringLogin IS NULL
+    THROW 51000, 'Monitoring principal context is missing.', 1;
 
 DECLARE @sql nvarchar(max) = N'';
 
@@ -85,12 +98,15 @@ WHERE d.database_id > 4
 EXEC sys.sp_executesql @sql;
 GO
 
-/* Effective-permission verification. Run this block after the grants. */
+/* Effective-permission verification. */
 USE [master];
 GO
 
-DECLARE @MonitoringLogin sysname = N'NT SERVICE\SQLServerAdvisorWorker';
--- SQL Login kullanıyorsanız bu değeri de yukarıdaki değerle aynı yapın.
+DECLARE @MonitoringLogin sysname =
+    (SELECT TOP (1) MonitoringLogin FROM #SqlAdvisorMonitoringPrincipal);
+
+IF @MonitoringLogin IS NULL
+    THROW 51000, 'Monitoring principal context is missing.', 1;
 
 IF OBJECT_ID('tempdb..#AdvisorPermissionCheck') IS NOT NULL
     DROP TABLE #AdvisorPermissionCheck;
@@ -138,6 +154,9 @@ EXEC sys.sp_executesql @verifySql;
 SELECT *
 FROM #AdvisorPermissionCheck
 ORDER BY DatabaseName;
+
+DROP TABLE #AdvisorPermissionCheck;
+DROP TABLE #SqlAdvisorMonitoringPrincipal;
 GO
 
 PRINT N'SQL Server 2019 monitored-principal permissions and verification completed.';

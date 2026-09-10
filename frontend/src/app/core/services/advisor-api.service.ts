@@ -1,7 +1,18 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { map, Observable } from 'rxjs';
-import { ConnectionTestResult, CreateServerRequest, DashboardServer, ServerListItem, WorkerStatus } from '../models/server.models';
+import {
+  ConnectionTestResult,
+  CreateServerRequest,
+  DashboardServer,
+  DatabaseOption,
+  MonitoredTableSelection,
+  ServerListItem,
+  TableOption,
+  TableScope,
+  UpdateTableScopeRequest,
+  WorkerStatus
+} from '../models/server.models';
 import { FindingListItem, RecommendationListItem } from '../models/analysis.models';
 import { BlockingTelemetry, WaitTelemetry } from '../models/telemetry.models';
 import { QueryPerformance, QueryPlan } from '../models/query.models';
@@ -29,6 +40,28 @@ export class AdvisorApiService {
 
   setServerEnabled(id: string, enabled: boolean): Observable<void> {
     return this.http.patch<void>(`${this.baseUrl}/servers/${id}/enabled`, enabled);
+  }
+
+  getServerDatabases(id: string): Observable<DatabaseOption[]> {
+    return this.http.get<DatabaseOption[]>(`${this.baseUrl}/servers/${id}/databases`);
+  }
+
+  getServerTables(id: string, databaseName: string): Observable<TableOption[]> {
+    return this.http.get<TableOption[]>(`${this.baseUrl}/servers/${id}/tables`, {
+      params: { databaseName }
+    });
+  }
+
+  getTableScope(id: string): Observable<TableScope> {
+    return this.http.get<TableScope>(`${this.baseUrl}/servers/${id}/table-scope`);
+  }
+
+  updateTableScope(id: string, request: UpdateTableScopeRequest): Observable<TableScope> {
+    return this.http.put<TableScope>(`${this.baseUrl}/servers/${id}/table-scope`, request);
+  }
+
+  getAllTableScopes(): Observable<(MonitoredTableSelection & { serverProfileId: string })[]> {
+    return this.http.get<(MonitoredTableSelection & { serverProfileId: string })[]>(`${this.baseUrl}/servers/table-scopes`);
   }
 
   getDashboardServers(): Observable<DashboardServer[]> {

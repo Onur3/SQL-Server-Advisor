@@ -15,8 +15,8 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
     private const string ServerPermissionSql = """
         SELECT
             ISNULL(SUSER_SNAME(), N'<unknown>') AS EffectiveLogin,
-            CAST(HAS_PERMS_BY_NAME(NULL, 'SERVER', 'VIEW SERVER STATE') AS int) AS HasViewServerState,
-            CAST(HAS_PERMS_BY_NAME(NULL, 'SERVER', 'VIEW ANY DATABASE') AS int) AS HasViewAnyDatabase;
+            CAST(HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER STATE') AS int) AS HasViewServerState,
+            CAST(HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW ANY DATABASE') AS int) AS HasViewAnyDatabase;
         """;
 
     private const string DatabasePermissionSql = """

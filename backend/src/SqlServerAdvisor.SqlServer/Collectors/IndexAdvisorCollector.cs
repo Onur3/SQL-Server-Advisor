@@ -45,6 +45,35 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
             FROM sys.dm_db_index_physical_stats(DB_ID(), NULL, NULL, NULL, 'LIMITED')
             WHERE index_id > 0
             GROUP BY object_id, index_id
+        ),
+        ops AS
+        (
+            SELECT
+                object_id,
+                index_id,
+                SUM(leaf_insert_count) AS LeafInsertCount,
+                SUM(leaf_delete_count) AS LeafDeleteCount,
+                SUM(leaf_update_count) AS LeafUpdateCount,
+                SUM(leaf_allocation_count) AS LeafAllocationCount,
+                SUM(range_scan_count) AS RangeScanCount,
+                SUM(singleton_lookup_count) AS SingletonLookupCount,
+                SUM(page_latch_wait_in_ms) AS PageLatchWaitMs
+            FROM sys.dm_db_index_operational_stats(DB_ID(), NULL, NULL, NULL)
+            WHERE index_id > 0
+            GROUP BY object_id, index_id
+        ),
+        compression AS
+        (
+            SELECT
+                object_id,
+                index_id,
+                CASE
+                    WHEN MIN(data_compression) = MAX(data_compression) THEN MAX(data_compression_desc)
+                    ELSE N'MIXED'
+                END AS DataCompression
+            FROM sys.partitions
+            WHERE index_id > 0
+            GROUP BY object_id, index_id
         )
         SELECT
             DB_NAME() AS DatabaseName,
@@ -59,9 +88,19 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
                 JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
                 WHERE ic.object_id = i.object_id
                   AND ic.index_id = i.index_id
-                  AND ic.is_included_column = 0
+                  AND ic.key_ordinal > 0
                 ORDER BY ic.key_ordinal
                 FOR XML PATH(''), TYPE).value('.', 'nvarchar(max)'), 1, 2, N''), N'') AS KeyColumns,
+            ISNULL(STUFF((
+                SELECT N', ' + QUOTENAME(c.name) +
+                    CASE WHEN ic.is_descending_key = 1 THEN N' DESC' ELSE N' ASC' END
+                FROM sys.index_columns ic
+                JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+                WHERE ic.object_id = i.object_id
+                  AND ic.index_id = i.index_id
+                  AND ic.key_ordinal > 0
+                ORDER BY ic.key_ordinal
+                FOR XML PATH(''), TYPE).value('.', 'nvarchar(max)'), 1, 2, N''), N'') AS KeyDefinition,
             ISNULL(STUFF((
                 SELECT N', ' + QUOTENAME(c.name)
                 FROM sys.index_columns ic
@@ -81,13 +120,24 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
             i.is_disabled AS IsDisabled,
             i.has_filter AS HasFilter,
             i.filter_definition AS FilterDefinition,
+            i.fill_factor AS FillFactor,
+            cmp.DataCompression,
             DATEDIFF(day, osi.sqlserver_start_time, SYSDATETIME()) AS UsageSinceDays,
+            ISNULL(op.LeafInsertCount, 0) AS LeafInsertCount,
+            ISNULL(op.LeafDeleteCount, 0) AS LeafDeleteCount,
+            ISNULL(op.LeafUpdateCount, 0) AS LeafUpdateCount,
+            ISNULL(op.LeafAllocationCount, 0) AS LeafAllocationCount,
+            ISNULL(op.RangeScanCount, 0) AS RangeScanCount,
+            ISNULL(op.SingletonLookupCount, 0) AS SingletonLookupCount,
+            ISNULL(op.PageLatchWaitMs, 0) AS PageLatchWaitMs,
             ips.AvgFragmentationPercent,
             ips.PageCount
         FROM sys.indexes i
         JOIN sys.tables t ON t.object_id = i.object_id
         JOIN ips ON ips.object_id = i.object_id AND ips.index_id = i.index_id
         CROSS JOIN sys.dm_os_sys_info AS osi
+        LEFT JOIN ops op ON op.object_id = i.object_id AND op.index_id = i.index_id
+        LEFT JOIN compression cmp ON cmp.object_id = i.object_id AND cmp.index_id = i.index_id
         LEFT JOIN sys.dm_db_index_usage_stats us
           ON us.database_id = DB_ID()
          AND us.object_id = i.object_id

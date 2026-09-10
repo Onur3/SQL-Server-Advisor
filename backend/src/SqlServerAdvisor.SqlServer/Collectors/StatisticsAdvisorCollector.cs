@@ -12,6 +12,12 @@ public sealed class StatisticsAdvisorCollector(IMonitoredConnectionStringFactory
     public int DefaultIntervalSeconds => 3600;
     public int DefaultTimeoutSeconds => 30;
 
+    private const string DatabasePermissionSql = """
+        SELECT
+            CAST(HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'VIEW DATABASE STATE') AS int) AS HasViewDatabaseState,
+            CAST(HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'VIEW DEFINITION') AS int) AS HasViewDefinition;
+        """;
+
     private const string DatabaseSql = """
         SELECT name
         FROM sys.databases
@@ -21,6 +27,15 @@ public sealed class StatisticsAdvisorCollector(IMonitoredConnectionStringFactory
         ORDER BY name;
         """;
 
+    private const string StatisticsGatewayExistsSql = """
+        SELECT CAST(CASE
+            WHEN OBJECT_ID(N'dbo.usp_SQLAdvisor_StatisticsMetadata', N'P') IS NULL THEN 0
+            ELSE 1
+        END AS int);
+        """;
+
+    private const string StatisticsGatewaySql = "EXEC dbo.usp_SQLAdvisor_StatisticsMetadata;";
+
     private const string StatisticsSql = """
         SELECT
             DB_NAME() AS DatabaseName,
@@ -28,6 +43,14 @@ public sealed class StatisticsAdvisorCollector(IMonitoredConnectionStringFactory
             s.stats_id AS StatisticsId,
             QUOTENAME(SCHEMA_NAME(t.schema_id)) + N'.' + QUOTENAME(t.name) AS TableName,
             s.name AS StatisticsName,
+            ISNULL(STUFF((
+                SELECT N', ' + QUOTENAME(c.name)
+                FROM sys.stats_columns sc
+                JOIN sys.columns c ON c.object_id = sc.object_id AND c.column_id = sc.column_id
+                WHERE sc.object_id = s.object_id
+                  AND sc.stats_id = s.stats_id
+                ORDER BY sc.stats_column_id
+                FOR XML PATH(''), TYPE).value('.', 'nvarchar(max)'), 1, 2, N''), N'') AS StatisticsColumns,
             ISNULL(sp.rows, 0) AS [Rows],
             ISNULL(sp.rows_sampled, 0) AS RowsSampled,
             ISNULL(sp.modification_counter, 0) AS ModificationCounter,
@@ -35,16 +58,20 @@ public sealed class StatisticsAdvisorCollector(IMonitoredConnectionStringFactory
             CAST(CASE WHEN ISNULL(sp.rows, 0) = 0 THEN NULL
                       ELSE sp.rows_sampled * 100.0 / NULLIF(sp.rows, 0)
                  END AS decimal(9,3)) AS SamplePercent,
+            sp.steps AS Steps,
+            sp.unfiltered_rows AS UnfilteredRows,
+            CAST(sp.persisted_sample_percent AS decimal(9,3)) AS PersistedSamplePercent,
             s.auto_created AS AutoCreated,
             s.user_created AS UserCreated,
             s.no_recompute AS NoRecompute,
             s.has_filter AS HasFilter,
-            s.filter_definition AS FilterDefinition
+            s.filter_definition AS FilterDefinition,
+            s.is_incremental AS IsIncremental,
+            CAST(CASE WHEN sp.object_id IS NULL THEN 0 ELSE 1 END AS bit) AS PropertiesVisible
         FROM sys.stats s
         JOIN sys.tables t ON t.object_id = s.object_id
         OUTER APPLY sys.dm_db_stats_properties(s.object_id, s.stats_id) sp
         WHERE t.is_ms_shipped = 0
-          AND ISNULL(sp.rows, 0) >= 1000
         ORDER BY ISNULL(sp.modification_counter, 0) DESC;
         """;
 
@@ -69,12 +96,43 @@ public sealed class StatisticsAdvisorCollector(IMonitoredConnectionStringFactory
             try
             {
                 connection.ChangeDatabase(databaseName);
+
+                var databasePermissions = await connection.QuerySingleAsync<DatabasePermissionState>(new CommandDefinition(
+                    DatabasePermissionSql,
+                    commandTimeout: 10,
+                    cancellationToken: cancellationToken));
+
+                if (databasePermissions.HasViewDatabaseState != 1 || databasePermissions.HasViewDefinition != 1)
+                {
+                    warnings.Add($"{databaseName}: statistics analizi atlandı; VIEW DATABASE STATE ve VIEW DEFINITION yetkileri gerekli.");
+                    continue;
+                }
+
+                var hasSignedGateway = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+                    StatisticsGatewayExistsSql,
+                    commandTimeout: 10,
+                    cancellationToken: cancellationToken)) == 1;
+
+                var commandText = hasSignedGateway ? StatisticsGatewaySql : StatisticsSql;
                 var rows = (await connection.QueryAsync<StatisticsSnapshot>(new CommandDefinition(
-                    StatisticsSql,
+                    commandText,
                     commandTimeout: DefaultTimeoutSeconds,
                     cancellationToken: cancellationToken))).AsList();
 
-                foreach (var item in rows)
+                if (!hasSignedGateway && rows.Count > 0)
+                {
+                    var visibleCount = rows.Count(x => x.PropertiesVisible);
+                    if (visibleCount == 0)
+                    {
+                        warnings.Add($"{databaseName}: sys.dm_db_stats_properties hiçbir statistics için görünür değil; statistics tuning coverage eksik. 016_statistics_metadata_gateway_sql2019_template.sql ile certificate-signed metadata gateway kurun; worker'a doğrudan tablo SELECT yetkisi vermeyin.");
+                        continue;
+                    }
+
+                    if (visibleCount < rows.Count)
+                        warnings.Add($"{databaseName}: statistics metadata kısmi; {visibleCount:N0}/{rows.Count:N0} statistics için dm_db_stats_properties görünür. Eksik nesneler analiz edilmedi; signed metadata gateway önerilir.");
+                }
+
+                foreach (var item in rows.Where(x => x.PropertiesVisible && x.Rows >= 1000))
                 {
                     item.ServerProfileId = server.Id;
                     item.CapturedAt = capturedAt;
@@ -83,7 +141,7 @@ public sealed class StatisticsAdvisorCollector(IMonitoredConnectionStringFactory
             }
             catch (SqlException ex) when (ex.Number is 229 or 297 or 916)
             {
-                warnings.Add($"{databaseName}: statistics analizi atlandı; CONNECT / VIEW DATABASE STATE / VIEW DEFINITION yetkilerini kontrol edin. SQL {ex.Number}.");
+                warnings.Add($"{databaseName}: statistics analizi atlandı; CONNECT / VIEW DATABASE STATE / VIEW DEFINITION ve varsa signed metadata gateway EXECUTE yetkisini kontrol edin. SQL {ex.Number}.");
             }
         }
 
@@ -93,4 +151,6 @@ public sealed class StatisticsAdvisorCollector(IMonitoredConnectionStringFactory
             Warnings = warnings
         };
     }
+
+    private sealed record DatabasePermissionState(int HasViewDatabaseState, int HasViewDefinition);
 }

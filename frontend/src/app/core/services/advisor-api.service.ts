@@ -8,6 +8,7 @@ import { QueryPerformance, QueryPlan } from '../models/query.models';
 import { FragmentedIndex, MissingIndexCandidate } from '../models/index.models';
 import { StatisticsStatus } from '../models/statistics.models';
 import { CollectorCoverage } from '../models/collector.models';
+import { AiPrompt, UpdateWorkloadSettingsRequest, WorkloadFile, WorkloadSettings } from '../models/workload.models';
 
 @Injectable({ providedIn: 'root' })
 export class AdvisorApiService {
@@ -46,6 +47,10 @@ export class AdvisorApiService {
     return this.http.get<RecommendationListItem[]>(`${this.baseUrl}/recommendations`, { params: { status } });
   }
 
+  getRecommendationAiPrompt(id: number): Observable<AiPrompt> {
+    return this.http.get<AiPrompt>(`${this.baseUrl}/recommendations/${id}/ai-prompt`);
+  }
+
   getWaitTelemetry(minutes = 15, take = 100): Observable<WaitTelemetry[]> {
     return this.http.get<WaitTelemetry[]>(`${this.baseUrl}/telemetry/waits`, {
       params: { minutes, take }
@@ -81,6 +86,24 @@ export class AdvisorApiService {
   getCollectorCoverage(collectorType: string): Observable<CollectorCoverage[]> {
     return this.http.get<CollectorCoverage[]>(`${this.baseUrl}/diagnostics/collector-coverage`, {
       params: { collectorType }
+    });
+  }
+
+  getWorkloadSettings(): Observable<WorkloadSettings> {
+    return this.http.get<WorkloadSettings>(`${this.baseUrl}/admin/workload-settings`);
+  }
+
+  updateWorkloadSettings(request: UpdateWorkloadSettingsRequest): Observable<WorkloadSettings> {
+    return this.http.put<WorkloadSettings>(`${this.baseUrl}/admin/workload-settings`, request);
+  }
+
+  requestWorkloadScan(): Observable<unknown> {
+    return this.http.post(`${this.baseUrl}/admin/workload-scan`, {});
+  }
+
+  getWorkloadFiles(activeOnly = true, take = 250): Observable<WorkloadFile[]> {
+    return this.http.get<WorkloadFile[]>(`${this.baseUrl}/admin/workload-files`, {
+      params: { activeOnly, take }
     });
   }
 }

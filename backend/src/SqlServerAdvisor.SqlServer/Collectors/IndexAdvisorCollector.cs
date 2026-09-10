@@ -14,6 +14,7 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
 
     private const string ServerPermissionSql = """
         SELECT
+            ISNULL(SUSER_SNAME(), N'<unknown>') AS EffectiveLogin,
             CAST(HAS_PERMS_BY_NAME(NULL, 'SERVER', 'VIEW SERVER STATE') AS int) AS HasViewServerState,
             CAST(HAS_PERMS_BY_NAME(NULL, 'SERVER', 'VIEW ANY DATABASE') AS int) AS HasViewAnyDatabase;
         """;
@@ -187,7 +188,7 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
 
         if (serverPermissions.HasViewServerState != 1)
         {
-            warnings.Add("Sunucu: Index Advisor çalıştırılamadı; SQL Server 2019 için VIEW SERVER STATE yetkisi eksik.");
+            warnings.Add($"Sunucu: Index Advisor çalıştırılamadı; SQL Server 2019 için VIEW SERVER STATE yetkisi eksik. Etkin login: {serverPermissions.EffectiveLogin}.");
             return new CollectorBatch
             {
                 Indexes = indexes,
@@ -197,7 +198,7 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
         }
 
         if (serverPermissions.HasViewAnyDatabase != 1)
-            warnings.Add("Sunucu: VIEW ANY DATABASE yetkisi eksik; database coverage eksik olabilir.");
+            warnings.Add($"Sunucu: VIEW ANY DATABASE yetkisi eksik; database coverage eksik olabilir. Etkin login: {serverPermissions.EffectiveLogin}.");
 
         var databaseNames = (await connection.QueryAsync<string>(new CommandDefinition(
             DatabaseSql,
@@ -219,7 +220,7 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
 
                 if (databasePermissions.HasViewDatabaseState != 1 || databasePermissions.HasViewDefinition != 1)
                 {
-                    warnings.Add($"{databaseName}: indeks analizi atlandı; VIEW DATABASE STATE ve VIEW DEFINITION yetkileri gerekli.");
+                    warnings.Add($"{databaseName}: indeks analizi atlandı; VIEW DATABASE STATE ve VIEW DEFINITION yetkileri gerekli. Etkin login: {serverPermissions.EffectiveLogin}.");
                     continue;
                 }
 
@@ -245,7 +246,7 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
                 {
                     if (string.IsNullOrWhiteSpace(missing.TableName))
                     {
-                        warnings.Add($"{databaseName}: missing-index kaydı tablo metadata'sı çözülemediği için atlandı; VIEW DEFINITION yetkisini kontrol edin.");
+                        warnings.Add($"{databaseName}: missing-index kaydı tablo metadata'sı çözülemediği için atlandı; VIEW DEFINITION yetkisini kontrol edin. Etkin login: {serverPermissions.EffectiveLogin}.");
                         continue;
                     }
 
@@ -258,7 +259,7 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
             }
             catch (SqlException ex) when (ex.Number is 229 or 297 or 916)
             {
-                warnings.Add($"{databaseName}: indeks analizi atlandı; SQL Server 2019 için VIEW SERVER STATE ve bu veritabanında CONNECT / VIEW DATABASE STATE / VIEW DEFINITION yetkilerini kontrol edin. SQL {ex.Number}.");
+                warnings.Add($"{databaseName}: indeks analizi atlandı; SQL Server 2019 için VIEW SERVER STATE ve bu veritabanında CONNECT / VIEW DATABASE STATE / VIEW DEFINITION yetkilerini kontrol edin. Etkin login: {serverPermissions.EffectiveLogin}. SQL {ex.Number}.");
             }
         }
 
@@ -334,6 +335,6 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
         MissingIndexSnapshot Snapshot,
         HashSet<string> IncludeColumns);
 
-    private sealed record ServerPermissionState(int HasViewServerState, int HasViewAnyDatabase);
+    private sealed record ServerPermissionState(string EffectiveLogin, int HasViewServerState, int HasViewAnyDatabase);
     private sealed record DatabasePermissionState(int HasViewDatabaseState, int HasViewDefinition);
 }

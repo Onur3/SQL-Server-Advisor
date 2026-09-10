@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { AdminComponent } from './features/admin/admin.component';
 import { DashboardComponent } from './features/dashboard/dashboard.component';
 import { FindingsComponent } from './features/findings/findings.component';
 import { IndexesComponent } from './features/indexes/indexes.component';
@@ -17,5 +18,6 @@ export const routes: Routes = [
   { path: 'statistics', component: StatisticsComponent },
   { path: 'findings', component: FindingsComponent },
   { path: 'recommendations', component: RecommendationsComponent },
+  { path: 'admin', component: AdminComponent },
   { path: '**', redirectTo: '' }
 ];

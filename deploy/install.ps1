@@ -29,6 +29,32 @@ function Run([string]$File, [string[]]$Arguments) {
 function Escape-Id([string]$Value) { $Value.Replace(']', ']]') }
 function Escape-String([string]$Value) { $Value.Replace("'", "''") }
 
+function Convert-SecureStringToPlainText([Security.SecureString]$SecureValue) {
+    $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecureValue)
+    try { return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) }
+    finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
+}
+
+function New-AppLoginPasswordMaterial([string]$Password, [int]$Iterations) {
+    $salt = New-Object byte[] 32
+    $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($salt) }
+    finally { $rng.Dispose() }
+
+    $derive = [Security.Cryptography.Rfc2898DeriveBytes]::new(
+        $Password,
+        $salt,
+        $Iterations,
+        [Security.Cryptography.HashAlgorithmName]::SHA256)
+    try { $hash = $derive.GetBytes(32) }
+    finally { $derive.Dispose() }
+
+    [pscustomobject]@{
+        Hash = [Convert]::ToBase64String($hash)
+        Salt = [Convert]::ToBase64String($salt)
+    }
+}
+
 function Get-DnsNames([System.Security.Cryptography.X509Certificates.X509Certificate2]$Cert) {
     $names = @()
     try { $names += @($Cert.DnsNameList | ForEach-Object { $_.Unicode }) } catch { }
@@ -210,6 +236,14 @@ function Write-AppSettings([string]$ApiPath, [string]$WorkerPath) {
     [ordered]@{
         ConnectionStrings = @{ AdvisorDatabase = $connection }
         Security = @{ DataProtectionKeyPath = $KeyPath }
+        AppLogin = [ordered]@{
+            Enabled = $AppLoginEnabled
+            Username = $AppLoginUsername
+            PasswordHash = $AppLoginPasswordHash
+            PasswordSalt = $AppLoginPasswordSalt
+            Iterations = $AppLoginIterations
+            SessionHours = $AppLoginSessionHours
+        }
         HttpsRedirection = @{ Enabled = $false }
         Cors = @{ Origins = @($origin) }
         Logging = @{ LogLevel = @{ Default='Information'; 'Microsoft.AspNetCore'='Warning' } }
@@ -301,6 +335,93 @@ $BuildConfiguration = [string]$s.build.configuration
 $InstallHostingBundle = [bool]$s.build.installHostingBundleIfMissing
 $HostingBundleUrl = [string]$s.build.hostingBundleUrl
 
+$AppLoginEnabled = $false
+$AppLoginUsername = 'admin'
+$AppLoginPasswordHash = ''
+$AppLoginPasswordSalt = ''
+$AppLoginIterations = 210000
+$AppLoginSessionHours = 12
+$AuthPromptDuringInstall = $true
+
+$authProperty = $s.PSObject.Properties['authentication']
+if ($null -ne $authProperty) {
+    $auth = $authProperty.Value
+    if ($null -ne $auth.PSObject.Properties['enabled']) { $AppLoginEnabled = [bool]$auth.enabled }
+    if ($null -ne $auth.PSObject.Properties['username'] -and [string]$auth.username) { $AppLoginUsername = [string]$auth.username }
+    if ($null -ne $auth.PSObject.Properties['iterations']) { $AppLoginIterations = [int]$auth.iterations }
+    if ($null -ne $auth.PSObject.Properties['sessionHours']) { $AppLoginSessionHours = [int]$auth.sessionHours }
+    if ($null -ne $auth.PSObject.Properties['promptDuringInstall']) { $AuthPromptDuringInstall = [bool]$auth.promptDuringInstall }
+}
+
+$existingApiSettingsPath = Join-Path $InstallRoot 'Api\appsettings.Production.json'
+if (Test-Path $existingApiSettingsPath) {
+    try {
+        $existingSettings = Get-Content -Raw -Encoding UTF8 $existingApiSettingsPath | ConvertFrom-Json
+        $existingLoginProperty = $existingSettings.PSObject.Properties['AppLogin']
+        if ($null -ne $existingLoginProperty) {
+            $existingLogin = $existingLoginProperty.Value
+            if ($null -ne $existingLogin.PSObject.Properties['Enabled']) { $AppLoginEnabled = [bool]$existingLogin.Enabled }
+            if ($null -ne $existingLogin.PSObject.Properties['Username'] -and [string]$existingLogin.Username) { $AppLoginUsername = [string]$existingLogin.Username }
+            if ($null -ne $existingLogin.PSObject.Properties['PasswordHash']) { $AppLoginPasswordHash = [string]$existingLogin.PasswordHash }
+            if ($null -ne $existingLogin.PSObject.Properties['PasswordSalt']) { $AppLoginPasswordSalt = [string]$existingLogin.PasswordSalt }
+            if ($null -ne $existingLogin.PSObject.Properties['Iterations']) { $AppLoginIterations = [int]$existingLogin.Iterations }
+            if ($null -ne $existingLogin.PSObject.Properties['SessionHours']) { $AppLoginSessionHours = [int]$existingLogin.SessionHours }
+        }
+    }
+    catch { Write-Warning 'Existing AppLogin settings could not be read; installer defaults will be used.' }
+}
+
+if ($AppLoginIterations -lt 100000) { $AppLoginIterations = 210000 }
+$AppLoginSessionHours = [Math]::Clamp($AppLoginSessionHours, 1, 168)
+
+if ($AuthPromptDuringInstall) {
+    Step 'Application login configuration'
+    $currentChoice = if ($AppLoginEnabled) { 'E' } else { 'H' }
+    do {
+        $answer = (Read-Host "Uygulama sabit kullanici adi/sifre ile korunsun mu? [E/H] (mevcut: $currentChoice, Enter=mevcut)").Trim().ToUpperInvariant()
+    } while ($answer -notin @('', 'E', 'H'))
+
+    if ($answer -eq 'E') { $AppLoginEnabled = $true }
+    elseif ($answer -eq 'H') { $AppLoginEnabled = $false }
+
+    if ($AppLoginEnabled) {
+        $enteredUsername = (Read-Host "Kullanici adi (Enter=$AppLoginUsername)").Trim()
+        if ($enteredUsername) { $AppLoginUsername = $enteredUsername }
+        if (-not $AppLoginUsername) { throw 'Application login username cannot be empty.' }
+
+        $securePassword = Read-Host 'Yeni sifre (mevcut sifreyi korumak icin Enter)' -AsSecureString
+        $plainPassword = Convert-SecureStringToPlainText $securePassword
+        try {
+            if ($plainPassword) {
+                if ($plainPassword.Length -lt 8) { throw 'Application login password must be at least 8 characters.' }
+                $secureConfirm = Read-Host 'Sifreyi tekrar girin' -AsSecureString
+                $plainConfirm = Convert-SecureStringToPlainText $secureConfirm
+                try {
+                    if (-not [string]::Equals($plainPassword, $plainConfirm, [StringComparison]::Ordinal)) {
+                        throw 'Application login passwords do not match.'
+                    }
+                }
+                finally { $plainConfirm = $null }
+
+                $material = New-AppLoginPasswordMaterial $plainPassword $AppLoginIterations
+                $AppLoginPasswordHash = $material.Hash
+                $AppLoginPasswordSalt = $material.Salt
+            }
+            elseif (-not $AppLoginPasswordHash -or -not $AppLoginPasswordSalt) {
+                throw 'Application login is enabled but no password exists. Enter a password.'
+            }
+        }
+        finally { $plainPassword = $null }
+    }
+    else {
+        $AppLoginPasswordHash = ''
+        $AppLoginPasswordSalt = ''
+    }
+}
+elseif ($AppLoginEnabled -and (-not $AppLoginPasswordHash -or -not $AppLoginPasswordSalt)) {
+    throw 'authentication.enabled=true requires an existing generated password hash. Run installer interactively once.'
+}
+
 if ($Protocol -notin @('http','https')) { throw 'web.protocol must be http or https.' }
 if ($CertMode -notin @('auto','thumbprint','pfx')) { throw 'certificate.mode must be auto, thumbprint or pfx.' }
 if (-not $HostName) { throw 'web.hostName is required.' }
@@ -372,6 +493,7 @@ try {
     Write-Host "API path    : $apiPath"
     Write-Host "Worker path : $workerPath"
     Write-Host "Settings    : $SettingsPath"
+    Write-Host "App login   : $(if ($AppLoginEnabled) { "Enabled ($AppLoginUsername)" } else { 'Disabled' })"
 }
 finally {
     if (Test-Path $stage) { Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue }

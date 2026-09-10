@@ -31,6 +31,7 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
         WHERE database_id > 4
           AND state = 0
           AND source_database_id IS NULL
+          AND name <> N'SQLAdvisor'
         ORDER BY name;
         """;
 
@@ -163,7 +164,7 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
                  (ISNULL(migs.user_seeks, 0) + ISNULL(migs.user_scans, 0)) AS decimal(19,3)) AS ImprovementMeasure
         FROM sys.dm_db_missing_index_details mid
         JOIN sys.dm_db_missing_index_groups mig ON mig.index_handle = mid.index_handle
-        JOIN sys.dm_db_missing_index_group_stats migs ON migs.group_handle = mig.index_group_handle
+        JOIN sys.dm_db_missing_index_group_stats migs ON migs.group_handle = mig.group_handle
         JOIN sys.tables t ON t.object_id = mid.object_id
         JOIN sys.schemas s ON s.schema_id = t.schema_id
         WHERE mid.database_id = DB_ID()

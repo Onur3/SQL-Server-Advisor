@@ -7,10 +7,7 @@ namespace SqlServerAdvisor.Infrastructure.Logging;
 public sealed class DailyRollingFileLoggerOptions
 {
     public bool Enabled { get; set; } = true;
-    public string DirectoryPath { get; set; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-        "SqlServerAdvisor",
-        "Logs");
+    public string DirectoryPath { get; set; } = string.Empty;
     public string FileNamePrefix { get; set; } = "sqladvisor";
     public int RetainedDays { get; set; } = 14;
 }
@@ -24,6 +21,15 @@ public static class DailyRollingFileLoggerExtensions
     {
         var options = new DailyRollingFileLoggerOptions();
         configuration.GetSection("Logging:File").Bind(options);
+
+        if (string.IsNullOrWhiteSpace(options.DirectoryPath))
+        {
+            var keyPath = configuration["Security:DataProtectionKeyPath"];
+            options.DirectoryPath = !string.IsNullOrWhiteSpace(keyPath)
+                ? Path.Combine(keyPath, "Logs")
+                : Path.Combine(AppContext.BaseDirectory, "Logs");
+        }
+
         if (string.IsNullOrWhiteSpace(options.FileNamePrefix) ||
             options.FileNamePrefix.Equals("sqladvisor", StringComparison.OrdinalIgnoreCase))
         {

@@ -57,6 +57,7 @@ public sealed class IndexSnapshot
     public string IndexName { get; set; } = string.Empty;
     public string TypeDesc { get; set; } = string.Empty;
     public string KeyColumns { get; set; } = string.Empty;
+    public string? KeyDefinition { get; set; }
     public string IncludeColumns { get; set; } = string.Empty;
     public decimal SizeMb { get; set; }
     public long UserSeeks { get; set; }
@@ -68,7 +69,16 @@ public sealed class IndexSnapshot
     public bool IsDisabled { get; set; }
     public bool HasFilter { get; set; }
     public string? FilterDefinition { get; set; }
+    public int FillFactor { get; set; }
+    public string? DataCompression { get; set; }
     public int UsageSinceDays { get; set; }
+    public long LeafInsertCount { get; set; }
+    public long LeafDeleteCount { get; set; }
+    public long LeafUpdateCount { get; set; }
+    public long LeafAllocationCount { get; set; }
+    public long RangeScanCount { get; set; }
+    public long SingletonLookupCount { get; set; }
+    public long PageLatchWaitMs { get; set; }
     public decimal? AvgFragmentationPercent { get; set; }
     public long? PageCount { get; set; }
     public DateTimeOffset CapturedAt { get; set; }
@@ -100,16 +110,22 @@ public sealed class StatisticsSnapshot
     public int StatisticsId { get; set; }
     public string TableName { get; set; } = string.Empty;
     public string StatisticsName { get; set; } = string.Empty;
+    public string? StatisticsColumns { get; set; }
     public long Rows { get; set; }
     public long RowsSampled { get; set; }
     public long ModificationCounter { get; set; }
     public DateTime? LastUpdated { get; set; }
     public decimal? SamplePercent { get; set; }
+    public int? Steps { get; set; }
+    public long? UnfilteredRows { get; set; }
+    public decimal? PersistedSamplePercent { get; set; }
     public bool AutoCreated { get; set; }
     public bool UserCreated { get; set; }
     public bool NoRecompute { get; set; }
     public bool HasFilter { get; set; }
     public string? FilterDefinition { get; set; }
+    public bool IsIncremental { get; set; }
+    public bool PropertiesVisible { get; set; } = true;
     public DateTimeOffset CapturedAt { get; set; }
 }
 

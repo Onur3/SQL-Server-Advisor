@@ -3,10 +3,13 @@ using SqlServerAdvisor.Analysis;
 using SqlServerAdvisor.Api.Hubs;
 using SqlServerAdvisor.Api.Security;
 using SqlServerAdvisor.Infrastructure;
+using SqlServerAdvisor.Infrastructure.Logging;
 using SqlServerAdvisor.SqlServer;
 
 var builder = WebApplication.CreateBuilder(args);
 var appLoginEnabled = builder.Configuration.GetValue<bool>($"{AppLoginOptions.SectionName}:Enabled");
+
+builder.Logging.AddSqlAdvisorFileLogging(builder.Configuration, "sqladvisor-api");
 
 builder.Services.Configure<AppLoginOptions>(builder.Configuration.GetSection(AppLoginOptions.SectionName));
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -52,6 +55,27 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+var unhandledLogger = app.Services.GetRequiredService<ILoggerFactory>()
+    .CreateLogger("SqlServerAdvisor.Api.Unhandled");
+
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (Exception ex)
+    {
+        unhandledLogger.LogError(
+            ex,
+            "Unhandled HTTP exception. Method={Method} Path={Path} Query={QueryString} TraceIdentifier={TraceIdentifier}",
+            context.Request.Method,
+            context.Request.Path.Value,
+            context.Request.QueryString.Value,
+            context.TraceIdentifier);
+        throw;
+    }
+});
 
 if (builder.Configuration.GetValue("HttpsRedirection:Enabled", true))
 {

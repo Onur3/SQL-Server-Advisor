@@ -1,193 +1,204 @@
 # SQL Server Advisor
 
-SQL Server Advisor is a 24/7, read-only monitoring and advisory platform for Microsoft SQL Server.
+> **24/7, read-only Microsoft SQL Server monitoring and DBA decision-support platform.**
+>
+> **Varsayılan arayüz dili Türkçe'dir. Uygulamada TR / EN dil seçeneği vardır.**  
+> **The default UI language is Turkish. English is available from the built-in TR / EN language selector.**
 
-## Technology
+[Türkçe](#türkçe) · [English](#english)
 
-- Angular 22 frontend
-- ASP.NET Core / .NET 10 Web API
-- .NET 10 Windows Worker Service
-- SQL Server 2025 application database
-- EF Core 10, Dapper and Microsoft.Data.SqlClient
-- Microsoft ScriptDom for T-SQL analysis
+---
 
-## Repository layout
+# Türkçe
 
-- `backend/` — .NET solution
-- `frontend/` — Angular application
-- `database/` — application database and monitored-server permission templates
-- `deploy/` — Windows Server / IIS deployment scripts and settings
+## SQL Server Advisor nedir?
 
-## Centralized deployment configuration
+SQL Server Advisor, Microsoft SQL Server ortamlarını **salt okunur** olarak izleyen ve toplanan performans verilerini DBA'nın değerlendirebileceği **bulgu ve önerilere** dönüştüren bir karar destek uygulamasıdır.
 
-All installation-specific values live in one file:
+Amaç yalnızca metrik göstermek değildir. Sistem şu akışı kurar:
 
 ```text
-deploy/install.settings.json
+Collect → Analyze → Finding → Recommendation → DBA Review
 ```
 
-The scripts do not contain organization-specific domains, certificate names, server names or installation paths.
+Advisor izlenen üretim veritabanlarında **otomatik tuning işlemi çalıştırmaz**. `CREATE/DROP/ALTER INDEX`, `UPDATE STATISTICS`, `KILL`, query hint veya benzeri değişiklikler ancak DBA tarafından ayrıca değerlendirilir.
 
-Important settings include:
+## Dil desteği
 
-```json
-{
-  "installation": {
-    "installRoot": "C:\\Program Files\\SqlServerAdvisor",
-    "siteName": "SQLServerAdvisor",
-    "appPoolName": "SQLServerAdvisor",
-    "workerServiceName": "SQLServerAdvisorWorker",
-    "dataProtectionKeyPath": "C:\\ProgramData\\SqlServerAdvisor\\Keys"
-  },
-  "web": {
-    "protocol": "http",
-    "hostName": "localhost",
-    "httpPort": 8088,
-    "httpsPort": 443,
-    "keepHttpBinding": false,
-    "windowsAuthentication": false,
-    "openFirewall": true
-  },
-  "certificate": {
-    "mode": "auto",
-    "thumbprint": "",
-    "pfxPath": "",
-    "pfxPasswordEnvironmentVariable": "SQLSERVERADVISOR_PFX_PASSWORD"
-  },
-  "database": {
-    "sqlInstance": "localhost",
-    "databaseName": "SQLAdvisor",
-    "runMigrations": true,
-    "grantApplicationIdentities": true,
-    "connectionString": "",
-    "connectionStringEnvironmentVariable": "SQLSERVERADVISOR_CONNECTION_STRING"
-  }
-}
+- 🇹🇷 **Türkçe** — varsayılan arayüz dili
+- 🇬🇧 **English** — uygulama içindeki `TR / EN` seçicisinden etkinleştirilebilir
+- Dil seçimi login ekranında ve ana üst menüde bulunur.
+- Seçim tarayıcıda saklanır ve sonraki açılışta korunur.
+- SQL metni, execution-plan XML, veritabanı/şema/tablo/index adları ve `IDX-001`, `STATS-001` gibi Rule ID'ler teknik doğruluğu korumak için çevrilmez.
+
+## Başlıca özellikler
+
+| Modül | Ne yapar? |
+| --- | --- |
+| **Server Health** | SQL CPU, bellek, session, request, blocking ve genel sağlık sinyallerini izler. |
+| **Wait & Blocking Advisor** | Wait delta'larını ve blocking zincirlerini anlamlandırır. |
+| **Query Performance Advisor** | Plan cache üzerinden pahalı sorguları CPU, duration, reads, writes ve impact ile inceler. |
+| **Execution Plan Viewer** | Yakalanan ShowPlan XML'i ve plan içinde kullanılan nesneleri görüntüler. |
+| **Index Advisor** | Mevcut indeksler, kullanım/write maliyeti, fragmentation ve missing-index sinyallerini birlikte değerlendirir. |
+| **Statistics Advisor** | Statistics freshness, sampling, NORECOMPUTE, persisted sampling ve redundant statistics durumlarını analiz eder. |
+| **Table Scope** | Sunucu → veritabanı → tablo seviyesinde whitelist tanımlayarak yalnız seçilen tabloları Index/Statistics analizine dahil eder. |
+| **Findings** | Problemin ne olduğunu, neden önemli olduğunu ve ilk neyin kontrol edilmesi gerektiğini gösterir. |
+| **Recommendations** | DBA kontrollü aksiyon önerileri, doğrulama SQL'i ve teknik kanıt sunar. |
+| **TXT Workload Analysis** | Sorgu dosyalarını çalıştırmadan okuyup tablo/kolon referanslarını destekleyici kanıt olarak kullanır. |
+| **Optional Login** | Kurulum sırasında istenirse sabit kullanıcı adı/şifre koruması etkinleştirilebilir. |
+| **File Logging** | API ve Worker loglarını günlük dosyalara yazar; unhandled API exception'larında stack trace kaydeder. |
+
+## Güvenlik sınırı
+
+SQL Server Advisor'ın en önemli tasarım kuralı şudur:
+
+> **Advisor izlenen SQL Server üzerinde otomatik değişiklik yapmaz.**
+
+Monitoring bağlantıları minimum yetki prensibiyle kullanılmalıdır. SQL Server 2019 uyumlu izin şablonları `database/` klasöründe bulunur. İzlenen sunucu izin şablonları installer tarafından bilinçli olarak otomatik uygulanmaz; DBA'nın inceleyip ayrıca uygulaması beklenir.
+
+Öneri ekranında bir DDL taslağı gösterilmesi, o komutun uygulama tarafından yürütüleceği anlamına gelmez.
+
+## Mimari
+
+```text
+┌──────────────────────────┐
+│ Angular 22 Web UI        │
+│ Turkish / English        │
+└────────────┬─────────────┘
+             │ same origin
+┌────────────▼─────────────┐
+│ ASP.NET Core / .NET 10   │
+│ Web API + SignalR        │
+└────────────┬─────────────┘
+             │
+┌────────────▼─────────────┐
+│ SQLAdvisor Database      │
+│ snapshots/findings/etc.  │
+└──────────────────────────┘
+
+┌──────────────────────────┐       read-only       ┌──────────────────────────┐
+│ .NET 10 Windows Worker   │ ────────────────────► │ Monitored SQL Servers    │
+│ collectors + analysis    │                       │ production / test         │
+└──────────────────────────┘                       └──────────────────────────┘
 ```
 
-### HTTP deployment
+Tek IIS uygulaması hem Angular statik dosyalarını hem `/api/...`, `/hubs/...` ve `/health` endpoint'lerini sunar. Worker bağımsız Windows Service olarak çalışır.
 
-Set:
+## Teknoloji
 
-```json
-"web": {
-  "protocol": "http",
-  "hostName": "localhost",
-  "httpPort": 8088
-}
+- Angular 22
+- ASP.NET Core / .NET 10 Web API
+- .NET 10 Windows Worker Service
+- Entity Framework Core 10
+- Dapper
+- Microsoft.Data.SqlClient
+- Microsoft ScriptDom
+- Microsoft SQL Server
+- IIS / Windows Server
+
+## Repository yapısı
+
+```text
+backend/     .NET API, Worker, domain, infrastructure ve analiz motoru
+database/    SQLAdvisor migration'ları ve monitored-server izin şablonları
+deploy/      Windows Server / IIS kurulum ve HTTPS scriptleri
+frontend/    Angular 22 web uygulaması
 ```
 
-### HTTPS deployment
+## Hızlı kurulum
 
-For a public or internal DNS name, use a neutral host such as:
+Kaynak koddan kurulum için temel gereksinimler:
 
-```json
-"web": {
-  "protocol": "https",
-  "hostName": "advisor.example.com",
-  "httpPort": 80,
-  "httpsPort": 443,
-  "keepHttpBinding": false
-}
-```
-
-Certificate selection is controlled by `certificate.mode`:
-
-- `auto` — searches `LocalMachine\My` for a valid exact-name or wildcard certificate with a private key.
-- `thumbprint` — uses `certificate.thumbprint`.
-- `pfx` — imports `certificate.pfxPath`; the PFX password is read from the environment variable named by `certificate.pfxPasswordEnvironmentVariable`.
-
-Do not commit certificate passwords or production database passwords into the JSON file.
-
-For a PFX deployment, for example:
-
-```powershell
-$env:SQLSERVERADVISOR_PFX_PASSWORD = 'set-this-securely-outside-source-control'
-```
-
-For a database connection string containing credentials, prefer:
-
-```powershell
-$env:SQLSERVERADVISOR_CONNECTION_STRING = 'Server=...;Database=SQLAdvisor;...'
-```
-
-The environment variable takes precedence over `database.connectionString`.
-
-## Automated installation
-
-Requirements for source-based installation:
-
-- Windows Server 2019 or later
+- Windows Server 2019 veya üzeri
 - .NET SDK 10.x
-- Node.js 24 or later
+- Node.js 24 veya üzeri
 - npm
-- Microsoft `sqlcmd` when database migrations are enabled
+- Database migration kullanılacaksa Microsoft `sqlcmd`
+- IIS
 
-Run PowerShell as Administrator:
+PowerShell'i **Administrator** olarak açın:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
 .\deploy\install.ps1
 ```
 
-To use a different settings file:
+Farklı settings dosyası kullanmak için:
 
 ```powershell
-.\deploy\install.ps1 -SettingsPath 'C:\Config\sql-server-advisor.settings.json'
+.\deploy\install.ps1 `
+  -SettingsPath 'C:\Config\sql-server-advisor.settings.json'
 ```
 
-The installer:
-
-1. Reads all deployment values from the settings JSON.
-2. Installs required IIS Windows features.
-3. Installs the .NET 10 Hosting Bundle when configured and missing.
-4. Publishes the API and Worker.
-5. Builds Angular for production.
-6. Copies Angular into the API `wwwroot` directory.
-7. Configures a single IIS application/site.
-8. Creates HTTP or HTTPS bindings from the settings file.
-9. Selects/imports the configured certificate for HTTPS.
-10. Opens the configured Windows Firewall port when enabled.
-11. Installs/updates the Worker Windows Service.
-12. Runs application database migrations when enabled.
-13. Configures Data Protection and filesystem ACLs.
-14. Starts IIS and the Worker and performs a health check.
-
-Default publish locations are also settings-driven. With the repository defaults they are:
+Kurulum değerleri merkezi olarak:
 
 ```text
-C:\Program Files\SqlServerAdvisor\Api
-C:\Program Files\SqlServerAdvisor\Worker
+deploy/install.settings.json
 ```
 
-## Certificate rebind / renewal
+dosyasından yönetilir. Production'a özel domain, sunucu adı, certificate password veya database password gibi değerler source control'e yazılmamalıdır.
 
-If a certificate is renewed or changed, edit only `deploy/install.settings.json` and run:
+## Opsiyonel uygulama girişi
+
+Installer kurulum sırasında uygulamanın sabit kullanıcı adı/şifre ile korunup korunmayacağını sorabilir.
+
+Login etkinse:
+
+- şifre plain text olarak saklanmaz,
+- PBKDF2-SHA256 hash + random salt kullanılır,
+- oturum HttpOnly cookie ile tutulur,
+- Angular uygulaması login ekranından sonra açılır.
+
+Login kullanılmak istenmezse özellik kapalı bırakılabilir.
+
+## Tablo kapsamı
+
+`SQL Sunucuları → Tablo Kapsamı` ekranından izleme kapsamı sınırlandırılabilir.
+
+```text
+Server
+  └─ Database
+      ├─ dbo.TableA  ✓
+      ├─ dbo.TableB  ✓
+      └─ dbo.TableC
+```
+
+- Hiç tablo seçilmezse mevcut davranış korunur ve tüm erişilebilir tablolar izlenir.
+- En az bir tablo seçilirse whitelist devreye girer.
+- Index ve Statistics collector/analizleri yalnız seçilen `Database + Schema + Table` kayıtlarını kullanır.
+
+## Log dosyaları
+
+API ve Worker günlük rolling log üretir. Varsayılan production konumu:
+
+```text
+C:\ProgramData\SqlServerAdvisor\Keys\Logs
+```
+
+Örnek:
+
+```text
+sqladvisor-api-20260910.log
+sqladvisor-worker-20260910.log
+```
+
+API'de yakalanmamış exception oluşursa HTTP method, path, query string, trace identifier ve stack trace dosyaya yazılır. Varsayılan retention süresi 14 gündür.
+
+## HTTPS / certificate
+
+HTTPS ayarları `deploy/install.settings.json` içinden yönetilir. Certificate yenilendiğinde aynı settings dosyasıyla:
 
 ```powershell
 .\deploy\configure-https.ps1
 ```
 
-The HTTPS helper reads the same settings file as the installer.
+çalıştırılabilir.
 
-## Production architecture
+`certificate.mode` seçenekleri:
 
-Angular is not deployed as a second IIS site. The Angular browser bundle is placed under the API publish directory at `wwwroot`.
-
-A single IIS application serves:
-
-- Angular static content
-- `/api/...`
-- `/hubs/...`
-- `/health`
-
-The Worker runs independently as a Windows Service.
-
-## Monitored SQL Server safety boundary
-
-The application is designed to remain read-only against monitored SQL Server instances. The monitored-server permission template is intentionally not executed automatically by the application installer. A DBA should review and apply the minimum required monitoring permissions separately.
-
-Recommendation scripts may be generated for human review, but the application does not automatically execute those changes against monitored production servers.
+- `auto` — uygun exact-name veya wildcard certificate bulur.
+- `thumbprint` — belirtilen certificate thumbprint'i kullanır.
+- `pfx` — PFX import eder; şifre environment variable üzerinden okunur.
 
 ## Development
 
@@ -208,3 +219,174 @@ cd frontend
 npm install
 npm start
 ```
+
+---
+
+# English
+
+## What is SQL Server Advisor?
+
+SQL Server Advisor is a **24/7, read-only monitoring and DBA decision-support platform** for Microsoft SQL Server. It collects operational and performance telemetry and converts it into structured findings and recommendations that a DBA can review.
+
+The core workflow is:
+
+```text
+Collect → Analyze → Finding → Recommendation → DBA Review
+```
+
+The platform is intentionally advisory. It **does not automatically modify monitored production databases**.
+
+## Languages
+
+- 🇹🇷 **Turkish** — default UI language
+- 🇬🇧 **English** — available from the built-in `TR / EN` selector
+- The selector is available on both the login screen and the main toolbar.
+- The selected language is persisted in the browser.
+- SQL text, execution-plan XML, database/schema/table/index names and technical Rule IDs remain unchanged so technical evidence is never rewritten.
+
+## Main features
+
+| Module | Purpose |
+| --- | --- |
+| **Server Health** | Monitors SQL CPU, memory, sessions, requests, blocking and overall health signals. |
+| **Wait & Blocking Advisor** | Explains wait deltas and blocking chains. |
+| **Query Performance Advisor** | Reviews expensive plan-cache queries using CPU, duration, reads, writes and impact. |
+| **Execution Plan Viewer** | Displays captured ShowPlan XML and objects referenced by the plan. |
+| **Index Advisor** | Correlates index inventory, read/write usage, fragmentation and missing-index signals. |
+| **Statistics Advisor** | Reviews statistics freshness, sampling, NORECOMPUTE, persisted sampling and redundancy. |
+| **Table Scope** | Provides server → database → table whitelisting for Index/Statistics collection and analysis. |
+| **Findings** | Explains what was found, why it matters and what to inspect first. |
+| **Recommendations** | Produces DBA-controlled actions, read-only validation SQL and supporting evidence. |
+| **TXT Workload Analysis** | Parses query files without executing them and uses object/column references as supporting evidence. |
+| **Optional Login** | Can enable a fixed username/password during installation. |
+| **File Logging** | Writes API and Worker logs to daily files and records stack traces for unhandled API exceptions. |
+
+## Safety boundary
+
+> **SQL Server Advisor never automatically changes the monitored SQL Server.**
+
+No automatic `CREATE/DROP/ALTER INDEX`, `UPDATE STATISTICS`, `KILL`, query hints or similar production tuning actions are executed by the Advisor.
+
+Monitoring connections should follow least privilege. SQL Server 2019-compatible monitored-server permission templates are available under `database/`. They are intentionally not auto-applied by the installer so a DBA can review them first.
+
+## Architecture
+
+```text
+Angular 22 Web UI (TR / EN)
+          │
+          ▼
+ASP.NET Core / .NET 10 API + SignalR
+          │
+          ▼
+SQLAdvisor application database
+
+.NET 10 Windows Worker ── read-only ──► Monitored SQL Servers
+```
+
+Angular and the API are served by a single IIS application. The Worker runs independently as a Windows Service.
+
+## Technology stack
+
+- Angular 22
+- ASP.NET Core / .NET 10
+- .NET 10 Windows Worker Service
+- Entity Framework Core 10
+- Dapper
+- Microsoft.Data.SqlClient
+- Microsoft ScriptDom
+- Microsoft SQL Server
+- IIS / Windows Server
+
+## Repository layout
+
+```text
+backend/     .NET API, Worker, domain, infrastructure and analysis engine
+database/    SQLAdvisor migrations and monitored-server permission templates
+deploy/      Windows Server / IIS deployment and HTTPS scripts
+frontend/    Angular 22 web application
+```
+
+## Quick installation
+
+Source-based deployment requires:
+
+- Windows Server 2019 or later
+- .NET SDK 10.x
+- Node.js 24 or later
+- npm
+- Microsoft `sqlcmd` when database migrations are enabled
+- IIS
+
+Run PowerShell as **Administrator**:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+.\deploy\install.ps1
+```
+
+Or use an external settings file:
+
+```powershell
+.\deploy\install.ps1 `
+  -SettingsPath 'C:\Config\sql-server-advisor.settings.json'
+```
+
+Deployment-specific values are centralized in:
+
+```text
+deploy/install.settings.json
+```
+
+Do not commit production passwords, certificate passwords or organization-specific secrets to source control.
+
+## Optional application login
+
+The installer can prompt to protect the application with a fixed username/password. When enabled, passwords are stored as PBKDF2-SHA256 hash + random salt and sessions use an HttpOnly cookie. The feature can also be left disabled.
+
+## Table scope
+
+From `SQL Servers → Table Scope`, administrators can define an explicit table whitelist. With no selection, all accessible tables remain in scope. Once at least one table is selected, Index and Statistics collection/analysis are restricted to the selected `Database + Schema + Table` combinations.
+
+## Logs
+
+API and Worker use daily rolling log files. The default production location is:
+
+```text
+C:\ProgramData\SqlServerAdvisor\Keys\Logs
+```
+
+Example:
+
+```text
+sqladvisor-api-20260910.log
+sqladvisor-worker-20260910.log
+```
+
+Unhandled API exceptions include method, path, query string, trace identifier and stack trace. Default retention is 14 days.
+
+## Development
+
+Backend:
+
+```powershell
+cd backend
+dotnet restore
+dotnet build SqlServerAdvisor.slnx
+dotnet run --project src/SqlServerAdvisor.Api
+dotnet run --project src/SqlServerAdvisor.Worker
+```
+
+Frontend:
+
+```powershell
+cd frontend
+npm install
+npm start
+```
+
+---
+
+## Project principle / Proje prensibi
+
+**Measure first. Explain the evidence. Recommend safely. Let the DBA decide.**  
+**Önce ölç. Kanıtı açıkla. Güvenli öner. Kararı DBA'ya bırak.**

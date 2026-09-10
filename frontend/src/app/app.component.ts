@@ -56,6 +56,13 @@ import { MatIconModule } from '@angular/material/icon';
           </a>
         </mat-nav-list>
 
+        <div class="nav-section">YÖNETİM</div>
+        <mat-nav-list>
+          <a mat-list-item routerLink="/admin" routerLinkActive="active">
+            <mat-icon matListItemIcon>settings</mat-icon><span matListItemTitle>Workload Kaynakları</span>
+          </a>
+        </mat-nav-list>
+
         <div class="readonly-card">
           <mat-icon>shield</mat-icon>
           <div><strong>Salt okunur izleme</strong><small>Advisor üretim SQL'inde otomatik değişiklik yapmaz.</small></div>

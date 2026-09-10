@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using SqlServerAdvisor.Application.Contracts;
 using SqlServerAdvisor.Application.DTOs;
@@ -12,7 +13,9 @@ namespace SqlServerAdvisor.Api.Controllers;
 public sealed class ServersController(
     AdvisorDbContext db,
     ICredentialProtector credentialProtector,
-    IServerCapabilityScanner capabilityScanner) : ControllerBase
+    IServerCapabilityScanner capabilityScanner,
+    IMonitoredConnectionStringFactory connectionStringFactory,
+    ITableScopeStore tableScopeStore) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IReadOnlyCollection<ServerListItemDto>>> GetAll(CancellationToken cancellationToken)
@@ -26,6 +29,13 @@ public sealed class ServersController(
             .ToListAsync(cancellationToken);
 
         return Ok(items);
+    }
+
+    [HttpGet("table-scopes")]
+    public async Task<ActionResult<IReadOnlyCollection<MonitoredTableScopeItemDto>>> GetAllTableScopes(
+        CancellationToken cancellationToken)
+    {
+        return Ok(await tableScopeStore.GetAllAsync(cancellationToken));
     }
 
     [HttpPost("test")]
@@ -69,6 +79,163 @@ public sealed class ServersController(
         profile.IsEnabled = enabled;
         await db.SaveChangesAsync(cancellationToken);
         return NoContent();
+    }
+
+    [HttpGet("{id:guid}/databases")]
+    public async Task<ActionResult<IReadOnlyCollection<DatabaseOptionDto>>> GetDatabases(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var profile = await db.Servers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (profile is null) return NotFound();
+
+        try
+        {
+            await using var connection = new SqlConnection(connectionStringFactory.Create(profile));
+            await connection.OpenAsync(cancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT name
+                FROM sys.databases
+                WHERE database_id > 4
+                  AND state = 0
+                  AND source_database_id IS NULL
+                  AND name <> N'SQLAdvisor'
+                ORDER BY name;
+                """;
+
+            var result = new List<DatabaseOptionDto>();
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                result.Add(new DatabaseOptionDto(reader.GetString(0)));
+
+            return Ok(result);
+        }
+        catch (SqlException ex)
+        {
+            return BadRequest(new { error = $"Veritabanı listesi alınamadı: {ex.Message}" });
+        }
+    }
+
+    [HttpGet("{id:guid}/tables")]
+    public async Task<ActionResult<IReadOnlyCollection<TableOptionDto>>> GetTables(
+        Guid id,
+        [FromQuery] string databaseName,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(databaseName) || databaseName.Length > 128)
+            return BadRequest(new { error = "Geçerli bir veritabanı adı seçin." });
+
+        var profile = await db.Servers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (profile is null) return NotFound();
+
+        try
+        {
+            var result = await LoadTablesAsync(profile, databaseName.Trim(), cancellationToken);
+            return Ok(result);
+        }
+        catch (SqlException ex)
+        {
+            return BadRequest(new { error = $"Tablo listesi alınamadı: {ex.Message}" });
+        }
+    }
+
+    [HttpGet("{id:guid}/table-scope")]
+    public async Task<ActionResult<TableScopeDto>> GetTableScope(Guid id, CancellationToken cancellationToken)
+    {
+        if (!await db.Servers.AsNoTracking().AnyAsync(x => x.Id == id, cancellationToken))
+            return NotFound();
+
+        var rows = await tableScopeStore.GetForServerAsync(id, cancellationToken);
+        var tables = rows
+            .Select(x => new MonitoredTableSelectionDto(x.DatabaseName, x.SchemaName, x.TableName))
+            .ToArray();
+
+        return Ok(new TableScopeDto(id, tables.Length > 0, tables));
+    }
+
+    [HttpPut("{id:guid}/table-scope")]
+    public async Task<ActionResult<TableScopeDto>> UpdateTableScope(
+        Guid id,
+        UpdateTableScopeRequest request,
+        CancellationToken cancellationToken)
+    {
+        var profile = await db.Servers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (profile is null) return NotFound();
+
+        var requested = (request.Tables ?? [])
+            .Select(x => new MonitoredTableSelectionDto(
+                x.DatabaseName.Trim(),
+                x.SchemaName.Trim(),
+                x.TableName.Trim()))
+            .Where(x => x.DatabaseName.Length > 0 && x.SchemaName.Length > 0 && x.TableName.Length > 0)
+            .DistinctBy(x => $"{x.DatabaseName}\u001f{x.SchemaName}\u001f{x.TableName}", StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (requested.Length > 2000)
+            return BadRequest(new { error = "Bir sunucu için en fazla 2000 tablo seçilebilir." });
+
+        if (requested.Any(x => x.DatabaseName.Length > 128 || x.SchemaName.Length > 128 || x.TableName.Length > 128))
+            return BadRequest(new { error = "Veritabanı, şema ve tablo adları en fazla 128 karakter olabilir." });
+
+        if (requested.Length > 0)
+        {
+            try
+            {
+                foreach (var group in requested.GroupBy(x => x.DatabaseName, StringComparer.OrdinalIgnoreCase))
+                {
+                    var available = await LoadTablesAsync(profile, group.Key, cancellationToken);
+                    var availableKeys = available
+                        .Select(x => $"{x.SchemaName}\u001f{x.TableName}")
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                    var missing = group.FirstOrDefault(x => !availableKeys.Contains($"{x.SchemaName}\u001f{x.TableName}"));
+                    if (missing is not null)
+                        return BadRequest(new { error = $"Tablo bulunamadı veya metadata yetkisi yok: {missing.DatabaseName}.{missing.SchemaName}.{missing.TableName}" });
+                }
+            }
+            catch (SqlException ex)
+            {
+                return BadRequest(new { error = $"Tablo kapsamı doğrulanamadı: {ex.Message}" });
+            }
+        }
+
+        await tableScopeStore.ReplaceForServerAsync(id, requested, cancellationToken);
+        return Ok(new TableScopeDto(id, requested.Length > 0, requested));
+    }
+
+    private async Task<IReadOnlyCollection<TableOptionDto>> LoadTablesAsync(
+        ServerProfile profile,
+        string databaseName,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new SqlConnection(connectionStringFactory.Create(profile));
+        await connection.OpenAsync(cancellationToken);
+        connection.ChangeDatabase(databaseName);
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT s.name AS SchemaName, t.name AS TableName
+            FROM sys.tables t
+            JOIN sys.schemas s ON s.schema_id = t.schema_id
+            WHERE t.is_ms_shipped = 0
+            ORDER BY s.name, t.name;
+            """;
+
+        var result = new List<TableOptionDto>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var schemaName = reader.GetString(0);
+            var tableName = reader.GetString(1);
+            result.Add(new TableOptionDto(
+                databaseName,
+                schemaName,
+                tableName,
+                $"{schemaName}.{tableName}"));
+        }
+
+        return result;
     }
 
     private ServerProfile BuildProfile(CreateServerRequest request)

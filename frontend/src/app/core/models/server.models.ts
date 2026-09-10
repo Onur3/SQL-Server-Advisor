@@ -38,6 +38,33 @@ export interface ConnectionTestResult {
   error?: string | null;
 }
 
+export interface DatabaseOption {
+  name: string;
+}
+
+export interface TableOption {
+  databaseName: string;
+  schemaName: string;
+  tableName: string;
+  displayName: string;
+}
+
+export interface MonitoredTableSelection {
+  databaseName: string;
+  schemaName: string;
+  tableName: string;
+}
+
+export interface TableScope {
+  serverProfileId: string;
+  restricted: boolean;
+  tables: MonitoredTableSelection[];
+}
+
+export interface UpdateTableScopeRequest {
+  tables: MonitoredTableSelection[];
+}
+
 export interface DashboardServer {
   id: string;
   name: string;

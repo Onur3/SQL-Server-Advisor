@@ -1,7 +1,18 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { map, Observable } from 'rxjs';
-import { ConnectionTestResult, CreateServerRequest, DashboardServer, ServerListItem, WorkerStatus } from '../models/server.models';
+import { forkJoin, map, Observable } from 'rxjs';
+import {
+  ConnectionTestResult,
+  CreateServerRequest,
+  DashboardServer,
+  DatabaseOption,
+  MonitoredTableSelection,
+  ServerListItem,
+  TableOption,
+  TableScope,
+  UpdateTableScopeRequest,
+  WorkerStatus
+} from '../models/server.models';
 import { FindingListItem, RecommendationListItem } from '../models/analysis.models';
 import { BlockingTelemetry, WaitTelemetry } from '../models/telemetry.models';
 import { QueryPerformance, QueryPlan } from '../models/query.models';
@@ -9,6 +20,8 @@ import { FragmentedIndex, MissingIndexCandidate } from '../models/index.models';
 import { StatisticsStatus } from '../models/statistics.models';
 import { CollectorCoverage } from '../models/collector.models';
 import { AiPrompt, UpdateWorkloadSettingsRequest, WorkloadFile, WorkloadSettings } from '../models/workload.models';
+
+type ServerTableScope = MonitoredTableSelection & { serverProfileId: string };
 
 @Injectable({ providedIn: 'root' })
 export class AdvisorApiService {
@@ -31,6 +44,28 @@ export class AdvisorApiService {
     return this.http.patch<void>(`${this.baseUrl}/servers/${id}/enabled`, enabled);
   }
 
+  getServerDatabases(id: string): Observable<DatabaseOption[]> {
+    return this.http.get<DatabaseOption[]>(`${this.baseUrl}/servers/${id}/databases`);
+  }
+
+  getServerTables(id: string, databaseName: string): Observable<TableOption[]> {
+    return this.http.get<TableOption[]>(`${this.baseUrl}/servers/${id}/tables`, {
+      params: { databaseName }
+    });
+  }
+
+  getTableScope(id: string): Observable<TableScope> {
+    return this.http.get<TableScope>(`${this.baseUrl}/servers/${id}/table-scope`);
+  }
+
+  updateTableScope(id: string, request: UpdateTableScopeRequest): Observable<TableScope> {
+    return this.http.put<TableScope>(`${this.baseUrl}/servers/${id}/table-scope`, request);
+  }
+
+  getAllTableScopes(): Observable<ServerTableScope[]> {
+    return this.http.get<ServerTableScope[]>(`${this.baseUrl}/servers/table-scopes`);
+  }
+
   getDashboardServers(): Observable<DashboardServer[]> {
     return this.http.get<DashboardServer[]>(`${this.baseUrl}/dashboard/servers`);
   }
@@ -40,11 +75,21 @@ export class AdvisorApiService {
   }
 
   getFindings(status = 'All'): Observable<FindingListItem[]> {
-    return this.http.get<FindingListItem[]>(`${this.baseUrl}/findings`, { params: { status } });
+    return forkJoin({
+      rows: this.http.get<FindingListItem[]>(`${this.baseUrl}/findings`, { params: { status } }),
+      scopes: this.getAllTableScopes()
+    }).pipe(map(({ rows, scopes }) => rows.filter(x =>
+      !this.isTableScopedCategory(x.category) || this.scopeAllows(scopes, x.serverProfileId, x.databaseName, x.objectName)
+    )));
   }
 
   getRecommendations(status = 'All'): Observable<RecommendationListItem[]> {
-    return this.http.get<RecommendationListItem[]>(`${this.baseUrl}/recommendations`, { params: { status } });
+    return forkJoin({
+      rows: this.http.get<RecommendationListItem[]>(`${this.baseUrl}/recommendations`, { params: { status } }),
+      scopes: this.getAllTableScopes()
+    }).pipe(map(({ rows, scopes }) => rows.filter(x =>
+      !this.isTableScopedCategory(x.category) || this.scopeAllows(scopes, x.serverProfileId, x.databaseName, x.objectName)
+    )));
   }
 
   getRecommendationAiPrompt(id: number): Observable<AiPrompt> {
@@ -72,17 +117,33 @@ export class AdvisorApiService {
   }
 
   getFragmentedIndexes(take = 100): Observable<FragmentedIndex[]> {
-    return this.http.get<FragmentedIndex[]>(`${this.baseUrl}/indexes/fragmented`, { params: { take } });
+    return forkJoin({
+      rows: this.http.get<FragmentedIndex[]>(`${this.baseUrl}/indexes/fragmented`, { params: { take } }),
+      scopes: this.getAllTableScopes()
+    }).pipe(map(({ rows, scopes }) => rows.filter(x =>
+      this.scopeAllows(scopes, x.serverProfileId, x.databaseName, x.tableName)
+    )));
   }
 
   getMissingIndexCandidates(take = 100): Observable<MissingIndexCandidate[]> {
-    return this.http.get<MissingIndexCandidate[]>(`${this.baseUrl}/indexes/missing`, { params: { take } }).pipe(
+    return forkJoin({
+      rows: this.http.get<MissingIndexCandidate[]>(`${this.baseUrl}/indexes/missing`, { params: { take } }),
+      scopes: this.getAllTableScopes()
+    }).pipe(
+      map(({ rows, scopes }) => rows.filter(x =>
+        this.scopeAllows(scopes, x.serverProfileId, x.databaseName, x.tableName)
+      )),
       map(rows => this.consolidateMissingIndexCandidates(rows))
     );
   }
 
   getStatisticsStatus(take = 100): Observable<StatisticsStatus[]> {
-    return this.http.get<StatisticsStatus[]>(`${this.baseUrl}/statistics`, { params: { take } });
+    return forkJoin({
+      rows: this.http.get<StatisticsStatus[]>(`${this.baseUrl}/statistics`, { params: { take } }),
+      scopes: this.getAllTableScopes()
+    }).pipe(map(({ rows, scopes }) => rows.filter(x =>
+      this.scopeAllows(scopes, x.serverProfileId, x.databaseName, x.tableName)
+    )));
   }
 
   getCollectorCoverage(collectorType: string): Observable<CollectorCoverage[]> {
@@ -107,6 +168,40 @@ export class AdvisorApiService {
     return this.http.get<WorkloadFile[]>(`${this.baseUrl}/admin/workload-files`, {
       params: { activeOnly, take }
     });
+  }
+
+  private scopeAllows(
+    scopes: ServerTableScope[],
+    serverProfileId: string,
+    databaseName?: string | null,
+    objectName?: string | null
+  ): boolean {
+    const serverScope = scopes.filter(x => x.serverProfileId.toLowerCase() === serverProfileId.toLowerCase());
+    if (!serverScope.length) return true;
+    if (!databaseName?.trim() || !objectName?.trim()) return false;
+
+    const parsed = this.parseObjectName(objectName);
+    return serverScope.some(x =>
+      x.databaseName.toLowerCase() === databaseName.toLowerCase() &&
+      x.tableName.toLowerCase() === parsed.tableName.toLowerCase() &&
+      (!parsed.schemaName || x.schemaName.toLowerCase() === parsed.schemaName.toLowerCase())
+    );
+  }
+
+  private parseObjectName(value: string): { schemaName: string; tableName: string } {
+    const parts = value
+      .split('.')
+      .map(x => x.trim().replace(/^\[|\]$/g, '').replace(/^"|"$/g, '').replace(/^`|`$/g, ''))
+      .filter(Boolean);
+    return {
+      schemaName: parts.length >= 2 ? parts[parts.length - 2] : '',
+      tableName: parts.length ? parts[parts.length - 1] : ''
+    };
+  }
+
+  private isTableScopedCategory(category: string): boolean {
+    const normalized = category?.trim().toLowerCase();
+    return normalized === 'index' || normalized === 'indexes' || normalized === 'statistics';
   }
 
   private consolidateMissingIndexCandidates(rows: MissingIndexCandidate[]): MissingIndexCandidate[] {

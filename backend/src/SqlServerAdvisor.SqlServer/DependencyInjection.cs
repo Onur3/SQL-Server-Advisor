@@ -15,8 +15,16 @@ public static class DependencyInjection
         services.AddSingleton<IServerHealthCollector, ServerHealthCollector>();
         services.AddSingleton<IAdvisorCollector, WaitBlockingCollector>();
         services.AddSingleton<IAdvisorCollector, QueryPerformanceCollector>();
-        services.AddSingleton<IAdvisorCollector, IndexAdvisorCollector>();
-        services.AddSingleton<IAdvisorCollector, StatisticsAdvisorCollector>();
+
+        services.AddSingleton<IndexAdvisorCollector>();
+        services.AddSingleton<StatisticsAdvisorCollector>();
+        services.AddSingleton<IAdvisorCollector>(sp => new TableScopeFilteringCollector(
+            sp.GetRequiredService<IndexAdvisorCollector>(),
+            sp.GetRequiredService<IServiceScopeFactory>()));
+        services.AddSingleton<IAdvisorCollector>(sp => new TableScopeFilteringCollector(
+            sp.GetRequiredService<StatisticsAdvisorCollector>(),
+            sp.GetRequiredService<IServiceScopeFactory>()));
+
         services.AddSingleton<DeadlockCollector>();
         return services;
     }

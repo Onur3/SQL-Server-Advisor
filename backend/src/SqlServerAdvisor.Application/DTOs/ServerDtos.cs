@@ -33,3 +33,30 @@ public sealed record ConnectionTestResult(
     string? ProductVersion,
     string? Edition,
     string? Error);
+
+public sealed record DatabaseOptionDto(string Name);
+
+public sealed record TableOptionDto(
+    string DatabaseName,
+    string SchemaName,
+    string TableName,
+    string DisplayName);
+
+public sealed record MonitoredTableSelectionDto(
+    string DatabaseName,
+    string SchemaName,
+    string TableName);
+
+public sealed record MonitoredTableScopeItemDto(
+    Guid ServerProfileId,
+    string DatabaseName,
+    string SchemaName,
+    string TableName);
+
+public sealed record TableScopeDto(
+    Guid ServerProfileId,
+    bool Restricted,
+    IReadOnlyCollection<MonitoredTableSelectionDto> Tables);
+
+public sealed record UpdateTableScopeRequest(
+    IReadOnlyCollection<MonitoredTableSelectionDto> Tables);

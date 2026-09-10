@@ -17,6 +17,7 @@ public static class DependencyInjection
 
         services.AddDbContext<AdvisorDbContext>(options =>
             options.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure()));
+        services.AddScoped<ITableScopeStore, TableScopeStore>();
 
         var keyPath = configuration["Security:DataProtectionKeyPath"]
             ?? Path.Combine(AppContext.BaseDirectory, "DataProtectionKeys");

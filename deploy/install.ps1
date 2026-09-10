@@ -372,7 +372,8 @@ if (Test-Path $existingApiSettingsPath) {
 }
 
 if ($AppLoginIterations -lt 100000) { $AppLoginIterations = 210000 }
-$AppLoginSessionHours = [Math]::Clamp($AppLoginSessionHours, 1, 168)
+if ($AppLoginSessionHours -lt 1) { $AppLoginSessionHours = 1 }
+elseif ($AppLoginSessionHours -gt 168) { $AppLoginSessionHours = 168 }
 
 if ($AuthPromptDuringInstall) {
     Step 'Application login configuration'

@@ -12,6 +12,18 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
     public int DefaultIntervalSeconds => 900;
     public int DefaultTimeoutSeconds => 60;
 
+    private const string ServerPermissionSql = """
+        SELECT
+            CAST(HAS_PERMS_BY_NAME(NULL, 'SERVER', 'VIEW SERVER STATE') AS int) AS HasViewServerState,
+            CAST(HAS_PERMS_BY_NAME(NULL, 'SERVER', 'VIEW ANY DATABASE') AS int) AS HasViewAnyDatabase;
+        """;
+
+    private const string DatabasePermissionSql = """
+        SELECT
+            CAST(HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'VIEW DATABASE STATE') AS int) AS HasViewDatabaseState,
+            CAST(HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'VIEW DEFINITION') AS int) AS HasViewDefinition;
+        """;
+
     private const string DatabaseSql = """
         SELECT name
         FROM sys.databases
@@ -113,15 +125,34 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
         await using var connection = new SqlConnection(connectionStringFactory.Create(server));
         await connection.OpenAsync(cancellationToken);
 
-        var databaseNames = (await connection.QueryAsync<string>(new CommandDefinition(
-            DatabaseSql,
-            commandTimeout: 10,
-            cancellationToken: cancellationToken))).AsList();
-
         var indexes = new List<IndexSnapshot>();
         var missingIndexes = new List<MissingIndexSnapshot>();
         var warnings = new List<string>();
         var capturedAt = DateTimeOffset.UtcNow;
+
+        var serverPermissions = await connection.QuerySingleAsync<ServerPermissionState>(new CommandDefinition(
+            ServerPermissionSql,
+            commandTimeout: 10,
+            cancellationToken: cancellationToken));
+
+        if (serverPermissions.HasViewServerState != 1)
+        {
+            warnings.Add("Sunucu: Index Advisor çalıştırılamadı; SQL Server 2019 için VIEW SERVER STATE yetkisi eksik.");
+            return new CollectorBatch
+            {
+                Indexes = indexes,
+                MissingIndexes = missingIndexes,
+                Warnings = warnings
+            };
+        }
+
+        if (serverPermissions.HasViewAnyDatabase != 1)
+            warnings.Add("Sunucu: VIEW ANY DATABASE yetkisi eksik; database coverage eksik olabilir.");
+
+        var databaseNames = (await connection.QueryAsync<string>(new CommandDefinition(
+            DatabaseSql,
+            commandTimeout: 10,
+            cancellationToken: cancellationToken))).AsList();
 
         foreach (var databaseName in databaseNames)
         {
@@ -130,6 +161,17 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
             try
             {
                 connection.ChangeDatabase(databaseName);
+
+                var databasePermissions = await connection.QuerySingleAsync<DatabasePermissionState>(new CommandDefinition(
+                    DatabasePermissionSql,
+                    commandTimeout: 10,
+                    cancellationToken: cancellationToken));
+
+                if (databasePermissions.HasViewDatabaseState != 1 || databasePermissions.HasViewDefinition != 1)
+                {
+                    warnings.Add($"{databaseName}: indeks analizi atlandı; VIEW DATABASE STATE ve VIEW DEFINITION yetkileri gerekli.");
+                    continue;
+                }
 
                 // Collect the complete index catalog, including small indexes. Fragmentation rules
                 // still apply their own page-count threshold, but missing-index coverage must compare
@@ -180,4 +222,7 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
             Warnings = warnings
         };
     }
+
+    private sealed record ServerPermissionState(int HasViewServerState, int HasViewAnyDatabase);
+    private sealed record DatabasePermissionState(int HasViewDatabaseState, int HasViewDefinition);
 }

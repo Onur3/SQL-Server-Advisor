@@ -30,7 +30,7 @@ export class LanguageService {
     this.language.set(language);
     try { localStorage.setItem(this.storageKey, language); } catch { }
     this.applyDocumentLanguage();
-    this.translateTree(document.body);
+    if (typeof document !== 'undefined') this.translateTree(document.body);
   }
 
   start(): void {
@@ -89,36 +89,13 @@ export class LanguageService {
       return;
     }
 
-    if (!(root instanceof Element) && root !== document.body) return;
-    if (root instanceof Element && this.shouldSkip(root)) return;
-
-    if (root instanceof Element)
+    if (root instanceof Element) {
+      if (this.shouldSkip(root)) return;
       this.translateElementAttributes(root);
-
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
-    let current: Node | null;
-    while ((current = walker.nextNode())) {
-      if (current instanceof Element) {
-        if (this.shouldSkip(current)) {
-          current = this.skipSubtree(walker, current);
-          if (!current) break;
-        } else {
-          this.translateElementAttributes(current);
-        }
-      } else if (current instanceof Text) {
-        this.translateTextNode(current);
-      }
     }
-  }
 
-  private skipSubtree(walker: TreeWalker, element: Element): Node | null {
-    let next = walker.nextSibling();
-    while (!next) {
-      const parent = walker.parentNode();
-      if (!parent || parent === document.body || !(parent instanceof Element)) return null;
-      next = walker.nextSibling();
-    }
-    return next;
+    for (const child of Array.from(root.childNodes))
+      this.translateTree(child);
   }
 
   private shouldSkip(element: Element): boolean {
@@ -184,7 +161,8 @@ export class LanguageService {
 
     const leading = value.match(/^\s*/)?.[0] ?? '';
     const trailing = value.match(/\s*$/)?.[0] ?? '';
-    const core = value.slice(leading.length, value.length - trailing.length || undefined);
+    const end = trailing.length ? value.length - trailing.length : value.length;
+    const core = value.slice(leading.length, end);
 
     const exact = TR_TO_EN[core];
     if (exact !== undefined) return `${leading}${exact}${trailing}`;
@@ -201,6 +179,7 @@ export class LanguageService {
   }
 
   private readInitialLanguage(): AppLanguage {
+    if (typeof localStorage === 'undefined') return 'tr';
     try {
       const stored = localStorage.getItem(this.storageKey);
       if (stored === 'en' || stored === 'tr') return stored;

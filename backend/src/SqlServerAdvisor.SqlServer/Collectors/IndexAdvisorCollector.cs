@@ -173,9 +173,6 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
                     continue;
                 }
 
-                // Collect the complete index catalog, including small indexes. Fragmentation rules
-                // still apply their own page-count threshold, but missing-index coverage must compare
-                // against every existing usable index or it can recommend duplicates.
                 var databaseIndexes = (await connection.QueryAsync<IndexSnapshot>(new CommandDefinition(
                     IndexSql,
                     commandTimeout: DefaultTimeoutSeconds,
@@ -188,14 +185,12 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
                     indexes.Add(index);
                 }
 
-                // Resolve schema/table from the current database catalog rather than OBJECT_NAME().
-                // Without metadata visibility OBJECT_NAME/OBJECT_SCHEMA_NAME can return NULL silently,
-                // which previously produced malformed recommendations such as "ON  ([Column])".
                 var databaseMissingIndexes = (await connection.QueryAsync<MissingIndexSnapshot>(new CommandDefinition(
                     MissingIndexSql,
                     commandTimeout: 20,
                     cancellationToken: cancellationToken))).AsList();
 
+                var validMissingIndexes = new List<MissingIndexSnapshot>();
                 foreach (var missing in databaseMissingIndexes)
                 {
                     if (string.IsNullOrWhiteSpace(missing.TableName))
@@ -206,8 +201,10 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
 
                     missing.ServerProfileId = server.Id;
                     missing.CapturedAt = capturedAt;
-                    missingIndexes.Add(missing);
+                    validMissingIndexes.Add(missing);
                 }
+
+                missingIndexes.AddRange(ConsolidateMissingIndexes(validMissingIndexes));
             }
             catch (SqlException ex) when (ex.Number is 229 or 297 or 916)
             {
@@ -222,6 +219,70 @@ public sealed class IndexAdvisorCollector(IMonitoredConnectionStringFactory conn
             Warnings = warnings
         };
     }
+
+    private static IReadOnlyCollection<MissingIndexSnapshot> ConsolidateMissingIndexes(
+        IReadOnlyCollection<MissingIndexSnapshot> candidates)
+    {
+        var result = new List<MissingIndexSnapshot>();
+
+        var groups = candidates.GroupBy(x => string.Join('\u001e',
+            x.DatabaseName.ToUpperInvariant(),
+            x.TableName.ToUpperInvariant(),
+            NormalizeColumnSequence(x.EqualityColumns),
+            NormalizeColumnSequence(x.InequalityColumns)));
+
+        foreach (var group in groups)
+        {
+            var remaining = group
+                .Select(x => new MissingIndexCandidateState(
+                    x,
+                    ParseColumns(x.IncludedColumns).ToHashSet(StringComparer.OrdinalIgnoreCase)))
+                .OrderByDescending(x => x.IncludeColumns.Count)
+                .ThenByDescending(x => x.Snapshot.ImprovementMeasure)
+                .ThenByDescending(x => x.Snapshot.UserSeeks + x.Snapshot.UserScans)
+                .ToList();
+
+            while (remaining.Count > 0)
+            {
+                var leader = remaining[0];
+                var covered = remaining
+                    .Where(x => leader.IncludeColumns.IsSupersetOf(x.IncludeColumns))
+                    .ToList();
+
+                if (covered.Count > 1)
+                {
+                    leader.Snapshot.UserSeeks = covered.Max(x => x.Snapshot.UserSeeks);
+                    leader.Snapshot.UserScans = covered.Max(x => x.Snapshot.UserScans);
+                    leader.Snapshot.AvgTotalUserCost = covered.Max(x => x.Snapshot.AvgTotalUserCost);
+                    leader.Snapshot.AvgUserImpact = covered.Max(x => x.Snapshot.AvgUserImpact);
+                    leader.Snapshot.ImprovementMeasure = covered.Max(x => x.Snapshot.ImprovementMeasure);
+                    leader.Snapshot.CapturedAt = covered.Max(x => x.Snapshot.CapturedAt);
+                }
+
+                result.Add(leader.Snapshot);
+                remaining.RemoveAll(x => covered.Contains(x));
+            }
+        }
+
+        return result
+            .OrderByDescending(x => x.ImprovementMeasure)
+            .ToList();
+    }
+
+    private static string NormalizeColumnSequence(string? value) =>
+        string.Join('\u001f', ParseColumns(value).Select(x => x.ToUpperInvariant()));
+
+    private static string[] ParseColumns(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(x => x.Trim().Trim('[', ']', '"'))
+                .Where(x => x.Length > 0)
+                .ToArray();
+
+    private sealed record MissingIndexCandidateState(
+        MissingIndexSnapshot Snapshot,
+        HashSet<string> IncludeColumns);
 
     private sealed record ServerPermissionState(int HasViewServerState, int HasViewAnyDatabase);
     private sealed record DatabasePermissionState(int HasViewDatabaseState, int HasViewDefinition);

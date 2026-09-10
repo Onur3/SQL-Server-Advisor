@@ -41,7 +41,7 @@ public sealed class DailyRollingFileLoggerProvider : ILoggerProvider, ISupportEx
 {
     private readonly DailyRollingFileLoggerOptions options;
     private readonly ConcurrentDictionary<string, DailyRollingFileLogger> loggers = new(StringComparer.Ordinal);
-    private readonly Lock writeLock = new();
+    private readonly object writeLock = new();
     private IExternalScopeProvider scopeProvider = new LoggerExternalScopeProvider();
     private DateOnly currentDate;
     private StreamWriter? writer;
@@ -51,7 +51,6 @@ public sealed class DailyRollingFileLoggerProvider : ILoggerProvider, ISupportEx
     {
         this.options = options;
         this.options.RetainedDays = Math.Clamp(this.options.RetainedDays, 1, 365);
-        Directory.CreateDirectory(this.options.DirectoryPath);
         CleanupOldFiles();
     }
 
@@ -84,51 +83,75 @@ public sealed class DailyRollingFileLoggerProvider : ILoggerProvider, ISupportEx
 
         lock (writeLock)
         {
-            if (disposed) return;
-            EnsureWriter(timestamp);
+            if (disposed || !TryEnsureWriter(timestamp)) return;
 
-            writer!.Write(timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff zzz"));
-            writer.Write(" [");
-            writer.Write(ToLevelCode(logLevel));
-            writer.Write("] ");
-            writer.Write(category);
-            if (eventId.Id != 0 || !string.IsNullOrWhiteSpace(eventId.Name))
+            try
             {
-                writer.Write(" [EventId=");
-                writer.Write(eventId.ToString());
-                writer.Write(']');
-            }
+                writer!.Write(timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff zzz"));
+                writer.Write(" [");
+                writer.Write(ToLevelCode(logLevel));
+                writer.Write("] ");
+                writer.Write(category);
+                if (eventId.Id != 0 || !string.IsNullOrWhiteSpace(eventId.Name))
+                {
+                    writer.Write(" [EventId=");
+                    writer.Write(eventId.ToString());
+                    writer.Write(']');
+                }
 
-            if (scopes.Count > 0)
+                if (scopes.Count > 0)
+                {
+                    writer.Write(" [Scope=");
+                    writer.Write(string.Join(" => ", scopes));
+                    writer.Write(']');
+                }
+
+                writer.Write(" - ");
+                writer.WriteLine(message);
+                if (exception is not null)
+                    writer.WriteLine(exception.ToString());
+            }
+            catch
             {
-                writer.Write(" [Scope=");
-                writer.Write(string.Join(" => ", scopes));
-                writer.Write(']');
+                CloseWriter();
             }
-
-            writer.Write(" - ");
-            writer.WriteLine(message);
-            if (exception is not null)
-                writer.WriteLine(exception.ToString());
-
-            writer.Flush();
         }
     }
 
-    private void EnsureWriter(DateTimeOffset timestamp)
+    private bool TryEnsureWriter(DateTimeOffset timestamp)
     {
         var date = DateOnly.FromDateTime(timestamp.LocalDateTime);
-        if (writer is not null && currentDate == date) return;
+        if (writer is not null && currentDate == date) return true;
 
-        writer?.Dispose();
-        currentDate = date;
-        Directory.CreateDirectory(options.DirectoryPath);
-        var path = Path.Combine(
-            options.DirectoryPath,
-            $"{SanitizePrefix(options.FileNamePrefix)}-{date:yyyyMMdd}.log");
-        var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
-        writer = new StreamWriter(stream) { AutoFlush = true };
-        CleanupOldFiles();
+        CloseWriter();
+        try
+        {
+            Directory.CreateDirectory(options.DirectoryPath);
+            var path = Path.Combine(
+                options.DirectoryPath,
+                $"{SanitizePrefix(options.FileNamePrefix)}-{date:yyyyMMdd}.log");
+            var stream = new FileStream(
+                path,
+                FileMode.Append,
+                FileAccess.Write,
+                FileShare.ReadWrite | FileShare.Delete);
+            writer = new StreamWriter(stream) { AutoFlush = true };
+            currentDate = date;
+            CleanupOldFiles();
+            return true;
+        }
+        catch
+        {
+            CloseWriter();
+            return false;
+        }
+    }
+
+    private void CloseWriter()
+    {
+        try { writer?.Dispose(); }
+        catch { }
+        writer = null;
     }
 
     private void CleanupOldFiles()
@@ -147,7 +170,7 @@ public sealed class DailyRollingFileLoggerProvider : ILoggerProvider, ISupportEx
                 }
                 catch
                 {
-                    // Logging must never take down the application because a stale log file cannot be removed.
+                    // Best effort only: stale log cleanup must never affect the application.
                 }
             }
         }
@@ -181,8 +204,7 @@ public sealed class DailyRollingFileLoggerProvider : ILoggerProvider, ISupportEx
         {
             if (disposed) return;
             disposed = true;
-            writer?.Dispose();
-            writer = null;
+            CloseWriter();
         }
         loggers.Clear();
     }

@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { map, Observable } from 'rxjs';
 import { ConnectionTestResult, CreateServerRequest, DashboardServer, ServerListItem, WorkerStatus } from '../models/server.models';
 import { FindingListItem, RecommendationListItem } from '../models/analysis.models';
 import { BlockingTelemetry, WaitTelemetry } from '../models/telemetry.models';
@@ -76,7 +76,9 @@ export class AdvisorApiService {
   }
 
   getMissingIndexCandidates(take = 100): Observable<MissingIndexCandidate[]> {
-    return this.http.get<MissingIndexCandidate[]>(`${this.baseUrl}/indexes/missing`, { params: { take } });
+    return this.http.get<MissingIndexCandidate[]>(`${this.baseUrl}/indexes/missing`, { params: { take } }).pipe(
+      map(rows => this.consolidateMissingIndexCandidates(rows))
+    );
   }
 
   getStatisticsStatus(take = 100): Observable<StatisticsStatus[]> {
@@ -105,5 +107,61 @@ export class AdvisorApiService {
     return this.http.get<WorkloadFile[]>(`${this.baseUrl}/admin/workload-files`, {
       params: { activeOnly, take }
     });
+  }
+
+  private consolidateMissingIndexCandidates(rows: MissingIndexCandidate[]): MissingIndexCandidate[] {
+    const groups = new Map<string, MissingIndexCandidate[]>();
+
+    for (const row of rows) {
+      const key = [
+        row.serverProfileId.toLowerCase(),
+        row.databaseName.toLowerCase(),
+        row.tableName.toLowerCase(),
+        this.normalizeColumnSequence(row.equalityColumns),
+        this.normalizeColumnSequence(row.inequalityColumns)
+      ].join('\u001e');
+
+      const group = groups.get(key) ?? [];
+      group.push(row);
+      groups.set(key, group);
+    }
+
+    const consolidated: MissingIndexCandidate[] = [];
+
+    for (const group of groups.values()) {
+      const remaining = group
+        .map(row => ({ row, includes: new Set(this.parseColumns(row.includedColumns).map(x => x.toLowerCase())) }))
+        .sort((a, b) => b.includes.size - a.includes.size || b.row.improvementMeasure - a.row.improvementMeasure);
+
+      while (remaining.length) {
+        const leader = remaining[0];
+        consolidated.push(leader.row);
+
+        for (let index = remaining.length - 1; index >= 0; index--) {
+          const candidate = remaining[index];
+          if ([...candidate.includes].every(column => leader.includes.has(column))) {
+            remaining.splice(index, 1);
+          }
+        }
+      }
+    }
+
+    return consolidated.sort((a, b) =>
+      Number(a.coveredByExistingIndex) - Number(b.coveredByExistingIndex) ||
+      b.improvementMeasure - a.improvementMeasure
+    );
+  }
+
+  private normalizeColumnSequence(value: string): string {
+    return this.parseColumns(value).map(x => x.toLowerCase()).join('\u001f');
+  }
+
+  private parseColumns(value: string): string[] {
+    if (!value?.trim()) return [];
+
+    return value
+      .split(',')
+      .map(x => x.trim().replace(/^\[|\]$/g, '').replace(/^"|"$/g, ''))
+      .filter(Boolean);
   }
 }

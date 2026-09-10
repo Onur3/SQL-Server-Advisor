@@ -26,6 +26,18 @@ public sealed record FragmentedIndexDto(
     string SuggestedInspection,
     DateTimeOffset CapturedAt);
 
+public sealed record ExistingIndexSummaryDto(
+    string IndexName,
+    string KeyColumns,
+    string IncludeColumns,
+    bool IsUnique,
+    bool IsPrimaryKey,
+    bool HasFilter,
+    string? FilterDefinition,
+    long Reads,
+    long Writes,
+    decimal SizeMb);
+
 public sealed record MissingIndexDto(
     long Id,
     Guid ServerProfileId,
@@ -41,6 +53,12 @@ public sealed record MissingIndexDto(
     decimal AvgUserImpact,
     decimal ImprovementMeasure,
     bool CoveredByExistingIndex,
+    string DecisionType,
+    string DecisionTitle,
+    string DecisionReason,
+    string? ProposedCreateSql,
+    IReadOnlyCollection<ExistingIndexSummaryDto> ExistingIndexes,
+    IReadOnlyCollection<string> MatchingWorkloadFiles,
     string DiagnosticLevel,
     string DiagnosticHeadline,
     string DiagnosticSummary,
